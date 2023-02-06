@@ -10,6 +10,7 @@ def enviar():
     JW_Mural.MyApp.run(url, nome_arquivo, idioma)
 
 janela = tk.Tk()
+janela.geometry("600x600")
 
 label_url = tk.Label(janela, text="URL:")
 label_url.pack()
@@ -29,7 +30,7 @@ label_idioma.pack()
 variavel = tk.StringVar(janela)
 variavel.set("pt")
 
-option_menu = tk.OptionMenu(janela, variavel, "pt", "en", "de")
+option_menu = tk.OptionMenu(janela, variavel, "pt")
 option_menu.pack()
 
 botao_enviar = tk.Button(janela, text="Enviar", command=enviar)

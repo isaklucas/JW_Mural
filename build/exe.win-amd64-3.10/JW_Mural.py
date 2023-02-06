@@ -2,22 +2,23 @@ import requests
 from bs4 import BeautifulSoup
 import docx
 import os
+import subprocess
 
 
 
 class MyApp:
-        def run(urlEv, nome_arquivo, idioma):
+        def run(urlEv, nomeEv, idiomaEv):
 
-
-                idioma = idioma
-                filename = nome_arquivo
-
+                # Variaveis digitadas pelo Usuario
+                idioma = idiomaEv
+                filename = nomeEv
                 urlEnviada = urlEv
-
+                
+                # Pega a Semana que está na URL
                 urlSplit = urlEnviada.split("/")
-
                 semanas = urlSplit[len(urlSplit) - 1]
 
+                # Variaveis utilizadas para os For e montar a Url novamente
                 tamanhoURL = len(urlSplit)
                 x = int(semanas)
                 y = x+5
@@ -29,15 +30,18 @@ class MyApp:
                         else : base_url = base_url + "/" + urlSplit[v]
 
 
+                # Seleciona o Template de acordo com Idioma escolhido
+                if idioma == "pt" :
+                        template_filename = "Templates/Template_PT.docx"
+                
+                # Nome do arquivo para gravaçao do documento
+                nomeArquivo = filename + ".docx"
 
-                template_filename = "Template.docx"
-                filename_template = filename + ".docx"
 
-                # Lendo o modelo do Word
-                template = docx.Document(template_filename)
-
+                # Lendo o modelo do Word Selecionado
                 doc = docx.Document(template_filename) 
 
+                # Variavel que susbtitui no Word
                 pagina = 'p'
                 
                 while x < y:
@@ -69,7 +73,7 @@ class MyApp:
                                         canticoInicial = soup.find(id="p3").get_text()
                                         tesouroTemp = soup.find(id="p6").get_text().split('(')
                                         perguntaJoias = soup.find(id="p8").get_text()
-                                        leituraSemana = soup.find(id="p12").get_text()
+                                        leituraSemana = soup.find(id="p12").get_text().split(':')
                                         canticoMeio = soup.find(id="p18").get_text()
                                         nvcP1temp = soup.find(id="p19").get_text().split('(')
                                         nvcP2temp = soup.find(id="p20").get_text().split('(')
@@ -96,7 +100,7 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana)
+                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana[1])
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18", canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
@@ -126,7 +130,7 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana)
+                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1])
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
@@ -158,7 +162,7 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana)
+                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1])
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
@@ -179,9 +183,12 @@ class MyApp:
                 if not os.path.exists("documentosCriados"):
                         os.makedirs("documentosCriados")
 
-                doc.save("documentosCriados/" + filename_template)
+                doc.save("documentosCriados/" + nomeArquivo)
                 # Exibindo mensagem de sucesso
-                print("Programaçao Criada com Sucesso na pasta DocumentosCriados com Nome:", str(filename_template)) 
+                print("Programaçao Criada com Sucesso na pasta DocumentosCriados com Nome:", str(nomeArquivo))
+
+                subprocess.run(["start", "documentosCriados/" + nomeArquivo], shell=True)
+ 
 
 
 
