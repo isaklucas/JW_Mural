@@ -6,9 +6,12 @@ import subprocess
 
 
 
+
+
+
 class MyApp:
         def run(urlEv, nomeEv, idiomaEv):
-
+                
                 # Variaveis digitadas pelo Usuario
                 idioma = idiomaEv
                 filename = nomeEv
@@ -73,18 +76,25 @@ class MyApp:
                                         canticoInicial = soup.find(id="p3").get_text()
                                         tesouroTemp = soup.find(id="p6").get_text().split('(')
                                         perguntaJoias = soup.find(id="p8").get_text()
-                                        leituraSemana = soup.find(id="p12").get_text().split(':')
+                                        leituraSemana = soup.find(id="p12").get_text().split(')')
                                         canticoMeio = soup.find(id="p18").get_text()
                                         nvcP1temp = soup.find(id="p19").get_text().split('(')
                                         nvcP2temp = soup.find(id="p20").get_text().split('(')
                                         estudo = soup.find(id="p21").get_text()
                                         canticoFinal = soup.find(id="p23")
+                                        
+                                        discurso = soup.find(id="p16").get_text()
+                                        
 
                                         nvcP1 = nvcP1temp[0]
                                         nvcP2 = nvcP2temp[0]
                                         tesouro = tesouroTemp[0]  
+                                        
+                                        if "Discurso:" in discurso:
+                                                disctemp = discurso.split('—')
+                                                discursoFormatado = "Discurso: — " + disctemp[1]
 
-                                        if canticoFinal != None and nvcP2 != "\nSua resposta\n\n":
+                                        if canticoFinal != None and nvcP2 != "\nSua resposta\n\n" and nvcP2 !="\nYour answers\n\n":
                                                 canticoFinal = soup.find(id="p23").get_text()        
                                                 # Localizando os campos de substituição no modelo
                                                 for paragraph in doc.paragraphs:
@@ -100,7 +110,7 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana[1])
+                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana[1] + ")")
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18", canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
@@ -111,6 +121,7 @@ class MyApp:
                                                                         run.text = run.text.replace(str(pagina) + "21", estudo)
                                                                 if str(pagina) + "23" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "23", canticoFinal)
+                                                                
 
 
                                         if canticoFinal == None :
@@ -130,7 +141,7 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1])
+                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1] + ")")
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
@@ -141,9 +152,10 @@ class MyApp:
                                                                         run.text = run.text.replace(str(pagina) + "21" , estudo)
                                                                 if str(pagina) + "23" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "23" , canticoFinal)
+                                                               
                                 
                                         
-                                        if nvcP2 == "\nSua resposta\n\n":
+                                        if nvcP2 == "\nSua resposta\n\n" or nvcP2 =="\nYour answers\n\n":
 
                                                 nvcP2 = soup.find(id="p21").get_text()
                                                 estudo = soup.find(id="p22").get_text()
@@ -162,17 +174,18 @@ class MyApp:
                                                                 if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                                 if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1])
+                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1] + ")")
                                                                 if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
                                                                 if str(pagina) + "19" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "19" , nvcP1)
                                                                 if str(pagina) + "20" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "20" , "Nao possue essa parte")
+                                                                        run.text = run.text.replace(str(pagina) + "20" , nvcP2)
                                                                 if str(pagina) + "21" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "21" , estudo)
                                                                 if str(pagina) + "23" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "23" , canticoFinal)          
+                                                                        run.text = run.text.replace(str(pagina) + "23" , canticoFinal) 
+                                                                
                                 else :
                                         y += 1
                                         pagina = chr(ord(pagina) -1) 
@@ -186,9 +199,9 @@ class MyApp:
                 doc.save("documentosCriados/" + nomeArquivo)
                 # Exibindo mensagem de sucesso
                 print("Programaçao Criada com Sucesso na pasta DocumentosCriados com Nome:", str(nomeArquivo))
-
+                
+                
                 subprocess.run(["start", "documentosCriados/" + nomeArquivo], shell=True)
- 
-
+                
 
 
