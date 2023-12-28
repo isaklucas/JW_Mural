@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import docx
 import os
 import subprocess
+import re
 
 
 
@@ -71,124 +72,145 @@ class MyApp:
                                 verificaSemana = soup.find(id="p1")
                                 
                                 if verificaSemana != None:
+                                        ## Pega Semana
                                         semana = soup.find(id="p1").get_text() 
-                                        livro = soup.find(id="p2").get_text()
-                                        canticoInicial = soup.find(id="p3").get_text()
-                                        tesouroTemp = soup.find(id="p6").get_text().split('(')
-                                        perguntaJoias = soup.find(id="p8").get_text()
-                                        leituraSemana = soup.find(id="p12").get_text().split(')')
-                                        canticoMeio = soup.find(id="p18").get_text()
-                                        nvcP1temp = soup.find(id="p19").get_text().split('(')
-                                        nvcP2temp = soup.find(id="p20").get_text().split('(')
-                                        estudo = soup.find(id="p21").get_text()
-                                        canticoFinal = soup.find(id="p23")
+                                        print('semana: ' + semana)
                                         
-                                        discurso = soup.find(id="p16").get_text()
+                                        ## Pega Capitulos
+                                        capituloVersiculo = soup.find(id="p2").get_text()
+                                        print('capitulo e Versiculo: ' + capituloVersiculo)
                                         
+                                        ## Pega cantico Inicial
+                                        canticoInicialTemp = soup.find(id="p3").get_text().split('|')
+                                        canticoInicial = canticoInicialTemp[0]
+                                        print('Cantico Inicial: ' + canticoInicial)
+                                        
+                                        ## Pega Tesouro
+                                        tesouroTemp = soup.find(id="p5").get_text()
+                                        tesouro = tesouroTemp
+                                        print('1. Tesouro : ' + tesouro)
+                                        
+                                        ## Pergunta das Joias
+                                        ## Topico a ser buscado
+                                        topico1 = "2. Joias espirituais"
+                                        # Encontre todas as tags h3 na página.
+                                        tags_h3 = soup.find_all("h3")
+                                        # Inicialize proxima_div com None antes do loop.
+                                        proxima_div = None
+                                        # Itere sobre as tags h3 e encontre aquela que contém o texto do tópico desejado.
+                                        for tag_h3 in tags_h3:
+                                         if tag_h3.get_text().startswith(topico1):
+                                                # Use find_next para encontrar a próxima div.
+                                                proxima_div = tag_h3.find_next("div")
+                                                # Saia do loop assim que a tag h3 desejada for encontrada.
+                                                break
 
-                                        nvcP1 = nvcP1temp[0]
-                                        nvcP2 = nvcP2temp[0]
-                                        tesouro = tesouroTemp[0]  
-                                        
-                                        if "Discurso:" in discurso:
-                                                disctemp = discurso.split('—')
-                                                discursoFormatado = "Discurso: — " + disctemp[1]
+                                        # Verifique se a próxima div foi encontrada antes de tentar extrair o texto.
+                                        if proxima_div:
+                                                perguntaJoiastemp = proxima_div.get_text().split('\n')
+                                                perguntaJoias = perguntaJoiastemp[4]
+                                                print('Pergunta das joias: ' +perguntaJoias)
+                                        else:
+                                                print(f"Div após {topico1} não encontrada na página.")
 
-                                        if canticoFinal != None and nvcP2 != "\nSua resposta\n\n" and nvcP2 !="\nYour answers\n\n":
-                                                canticoFinal = soup.find(id="p23").get_text()        
-                                                # Localizando os campos de substituição no modelo
-                                                for paragraph in doc.paragraphs:
-                                                        for run in paragraph.runs:
-                                                                if str(pagina) + "01" in run.text:
+                                        ## Leitura da Semana
+                                        leituraSemana = None  
+                                        topico2 = "3. Leitura da Bíblia"      
+                                        # Inicialize proxima_div com None antes do loop.
+                                        proxima_div = None
+                                        # Itere sobre as tags h3 e encontre aquela que contém o texto do tópico desejado.
+                                        for tag_h3 in tags_h3:
+                                         if tag_h3.get_text().startswith(topico2):
+                                                # Use find_next para encontrar a próxima div.
+                                                proxima_div = tag_h3.find_next("div")
+                                                # Saia do loop assim que a tag h3 desejada for encontrada.
+                                                break
+
+                                        # Verifique se a próxima div foi encontrada antes de tentar extrair o texto.
+                                        if proxima_div:
+                                                leituraSemanatemp = proxima_div.get_text()
+                                                leituraSemanatemp2 = leituraSemanatemp.replace('\n', '').split(')')
+                                                leituraSemana = leituraSemanatemp2[1]
+                                                
+                                                print('Leitura da Semana : ' + leituraSemana)
+                                        else:
+                                                print(f"Div após {topico2} não encontrada na página.")
+                                        
+                                        
+                                        ## Cantico do Meio
+                                        Canticos = soup.find_all("h3", class_="dc-icon--music")
+                                        canticoMeio = Canticos[1].get_text()
+                                        print('Cantico Meio : ' + canticoMeio)
+                                        
+                                        
+                                        ## Nossa vida Crista Partes
+                                        # Inicialize uma variável para contar o número de tags dc-icon--music encontradas.
+                                        contador_dc_icon_music = 0
+                                        # Itere sobre as tags h3.
+                                        for tag_h3 in tags_h3:
+                                        # Verifique se a tag h3 tem a classe dc-icon--music.
+                                                if "dc-icon--music" in tag_h3.get("class", []):
+                                                        # Incrementa o contador ao encontrar uma tag dc-icon--music.
+                                                        contador_dc_icon_music += 1
+                                                        
+                                                        # Verifica se já encontramos a segunda tag dc-icon--music.
+                                                        if contador_dc_icon_music == 2:
+                                                                # Encontramos a segunda tag dc-icon--music, agora gravamos o conteúdo das próximas três tags.
+                                                                index_tag_atual = tags_h3.index(tag_h3)
+                                                                proximas_tags = tags_h3[index_tag_atual + 1:index_tag_atual + 4]  # Pega as próximas três tags.
+                                                                
+                                                                # Grava o conteúdo nas variáveis correspondentes.
+                                                                nvcP1 = proximas_tags[0].get_text() if len(proximas_tags) > 0 else "não possui"
+                                                                nvcP2 = proximas_tags[1].get_text() if len(proximas_tags) > 1 else "não possui"
+                                                                estudo = proximas_tags[2].get_text() if len(proximas_tags) > 2 else "não possui"
+                                                                
+                                                                break
+                                                                                
+                                        
+                                        ## Ajuste caso nao aja parte 2
+                                        if 'Estudo bíblico' in nvcP2:
+                                                estudo = nvcP2 
+                                                nvcP2 = "não possue esta Parte"
+                                        
+                                        print('nvcP1 : ' + nvcP1)
+                                        print('nvcP2 : ' + nvcP2)
+                                        print('estudo  : ' + estudo)
+                                        
+                                        canticoFinalTemp = tags_h3[-3].get_text().split('|')
+                                        canticoFinal = canticoFinalTemp[1]
+                                        print('Cantico Final : ' + canticoFinal)
+                                                
+ 
+                                        for paragraph in doc.paragraphs:
+                                                for run in paragraph.runs:
+                                                        if str(pagina) + "01" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "01", semana) 
-                                                                if str(pagina) + "02" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "02", livro)
-                                                                if str(pagina) + "03" in run.text:
+                                                        if str(pagina) + "02" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "02", capituloVersiculo)
+                                                        if str(pagina) + "03" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "03", canticoInicial)
-                                                                if str(pagina) + "06" in run.text:
+                                                        if str(pagina) + "06" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "06", tesouro)
-                                                                if str(pagina) + "08" in run.text:
+                                                        if str(pagina) + "08" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
-                                                                if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana[1] + ")")
-                                                                if str(pagina) + "18" in run.text:
+                                                        if str(pagina) + "12" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "12", leituraSemana + ")")
+                                                        if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18", canticoMeio)
-                                                                if str(pagina) + "19" in run.text:
+                                                        if str(pagina) + "19" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "19", nvcP1)
-                                                                if str(pagina) + "20" in run.text:
+                                                        if str(pagina) + "20" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "20", nvcP2)
-                                                                if str(pagina) + "21" in run.text:
+                                                        if str(pagina) + "21" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "21", estudo)
-                                                                if str(pagina) + "23" in run.text:
+                                                        if str(pagina) + "23" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "23", canticoFinal)
                                                                 
 
 
-                                        if canticoFinal == None :
-                                                estudo = soup.find(id="p20").get_text()
-                                                canticoFinal = soup.find(id="p22").get_text()
-                                                # Localizando os campos de substituição no modelo
-                                                for paragraph in doc.paragraphs:
-                                                        for run in paragraph.runs:
-                                                                if str(pagina) + "01" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "01", semana) 
-                                                                if str(pagina) + "02" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "02", livro)
-                                                                if str(pagina) + "03" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "03", canticoInicial)
-                                                                if str(pagina) + "06" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "06", tesouro)
-                                                                if str(pagina) + "08" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
-                                                                if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1] + ")")
-                                                                if str(pagina) + "18" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
-                                                                if str(pagina) + "19" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "19" , nvcP1)
-                                                                if str(pagina) + "20" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "20" , "Nao possue essa parte")
-                                                                if str(pagina) + "21" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "21" , estudo)
-                                                                if str(pagina) + "23" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "23" , canticoFinal)
-                                                               
-                                
-                                        
-                                        if nvcP2 == "\nSua resposta\n\n" or nvcP2 =="\nYour answers\n\n":
-
-                                                nvcP2 = soup.find(id="p21").get_text()
-                                                estudo = soup.find(id="p22").get_text()
-                                                canticoFinal = soup.find(id="p24").get_text()
-                                                # Localizando os campos de substituição no modelo
-                                                for paragraph in doc.paragraphs:
-                                                        for run in paragraph.runs:
-                                                                if str(pagina) + "01" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "01", semana) 
-                                                                if str(pagina) + "02" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "02", livro)
-                                                                if str(pagina) + "03" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "03", canticoInicial)
-                                                                if str(pagina) + "06" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "06", tesouro)
-                                                                if str(pagina) + "08" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
-                                                                if str(pagina) + "12" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "12" , leituraSemana[1] + ")")
-                                                                if str(pagina) + "18" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "18" , canticoMeio)
-                                                                if str(pagina) + "19" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "19" , nvcP1)
-                                                                if str(pagina) + "20" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "20" , nvcP2)
-                                                                if str(pagina) + "21" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "21" , estudo)
-                                                                if str(pagina) + "23" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "23" , canticoFinal) 
+                                       
                                                                 
-                                else :
-                                        y += 1
-                                        pagina = chr(ord(pagina) -1) 
+                               
                                 
                                 pagina = chr(ord(pagina) + 1)
 
