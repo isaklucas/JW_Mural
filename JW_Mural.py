@@ -146,24 +146,42 @@ class MyApp:
                                         ## Nossa vida Crista Partes
                                         # Inicialize uma variável para contar o número de tags dc-icon--music encontradas.
                                         contador_dc_icon_music = 0
-                                        # Itere sobre as tags h3.
-                                        for tag_h3 in tags_h3:
-                                        # Verifique se a tag h3 tem a classe dc-icon--music.
+                                        # Itera sobre as tags h3 com seus índices.
+                                        for index, tag_h3 in enumerate(tags_h3):
                                                 if "dc-icon--music" in tag_h3.get("class", []):
-                                                        # Incrementa o contador ao encontrar uma tag dc-icon--music.
                                                         contador_dc_icon_music += 1
-                                                        
-                                                        # Verifica se já encontramos a segunda tag dc-icon--music.
+
                                                         if contador_dc_icon_music == 2:
-                                                                # Encontramos a segunda tag dc-icon--music, agora gravamos o conteúdo das próximas três tags.
-                                                                index_tag_atual = tags_h3.index(tag_h3)
-                                                                proximas_tags = tags_h3[index_tag_atual + 1:index_tag_atual + 4]  # Pega as próximas três tags.
-                                                                
-                                                                # Grava o conteúdo nas variáveis correspondentes.
-                                                                nvcP1 = proximas_tags[0].get_text() if len(proximas_tags) > 0 else "não possui"
+                                                        # Grava o conteúdo das 4 tags anteriores.
+                                                                anterior_tags = tags_h3[max(0, index - 4):index]
+
+                                                                # Grava o conteúdo das três tags seguintes.
+                                                                proximas_tags = tags_h3[index + 1:index + 4]
+
+                                                                # Inicializa variáveis com valores padrão
+                                                                iniciandoConversa = "não possui"
+                                                                cultivandoInteresse = "não possui"
+                                                                estudoDiscurso = "não possui"
+                                                                escola4 = "não possui"
+
+                                                                # Itera sobre as tags anteriores e atribui conforme o início do texto
+                                                                for i, anterior_tag in enumerate(anterior_tags):
+                                                                        texto_anterior = anterior_tag.get_text().strip()
+
+                                                                        if texto_anterior.startswith("4."):
+                                                                                iniciandoConversa = texto_anterior
+                                                                        elif texto_anterior.startswith("5."):
+                                                                                cultivandoInteresse = texto_anterior
+                                                                        elif texto_anterior.startswith("6."):
+                                                                                estudoDiscurso = texto_anterior
+                                                                        elif texto_anterior.startswith("7."):
+                                                                                escola4 = texto_anterior
+
+                                                                # Grava o conteúdo das três tags seguintes.
+                                                                nvcP1 = proximas_tags[0].get_text() if proximas_tags else "não possui"
                                                                 nvcP2 = proximas_tags[1].get_text() if len(proximas_tags) > 1 else "não possui"
                                                                 estudo = proximas_tags[2].get_text() if len(proximas_tags) > 2 else "não possui"
-                                                                
+
                                                                 break
                                                                                 
                                         
@@ -171,10 +189,43 @@ class MyApp:
                                         if 'Estudo bíblico' in nvcP2:
                                                 estudo = nvcP2 
                                                 nvcP2 = "não possue esta Parte"
+                                                
+                                        
+                                                
+                                        
+                                        print('iniciando Conversa : ' + iniciandoConversa)
+                                        print('cultivando Interesse : ' + cultivandoInteresse)
+                                        print('estudo ou Discurso  : ' + estudoDiscurso)
+                                        print('Escola parte 4 : ' + escola4)
                                         
                                         print('nvcP1 : ' + nvcP1)
                                         print('nvcP2 : ' + nvcP2)
-                                        print('estudo  : ' + estudo)
+                                        
+                                        
+                                        ## Estudo Biblico
+                                        topico1 = estudo
+                                        # Encontre todas as tags h3 na página.
+                                        tags_h3 = soup.find_all("h3")
+                                        # Inicialize proxima_div com None antes do loop.
+                                        proxima_div = None
+                                        # Itere sobre as tags h3 e encontre aquela que contém o texto do tópico desejado.
+                                        for tag_h3 in tags_h3:
+                                         if tag_h3.get_text().startswith(topico1):
+                                                # Use find_next para encontrar a próxima div.
+                                                proxima_div = tag_h3.find_next("div")
+                                                # Saia do loop assim que a tag h3 desejada for encontrada.
+                                                break
+
+                                        # Verifique se a próxima div foi encontrada antes de tentar extrair o texto.
+                                        if proxima_div:
+                                                estudoTemp = proxima_div.get_text().split(')')
+                                                estudo = estudo +  estudoTemp[1].replace('\n', '')                                               
+                                                print('estudo  : ' + estudo)
+                                        else:
+                                                print(f"Div após {topico1} não encontrada na página.")
+                                                
+                                                
+                                        
                                         
                                         canticoFinalTemp = tags_h3[-3].get_text().split('|')
                                         canticoFinal = canticoFinalTemp[1]
@@ -195,6 +246,14 @@ class MyApp:
                                                                         run.text = run.text.replace(str(pagina) + "08", perguntaJoias)
                                                         if str(pagina) + "12" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "12", leituraSemana + ")")
+                                                        if str(pagina) + "13" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "13", iniciandoConversa)
+                                                        if str(pagina) + "14" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "14", cultivandoInteresse)
+                                                        if str(pagina) + "15" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "15", estudoDiscurso)
+                                                        if str(pagina) + "16" in run.text:
+                                                                        run.text = run.text.replace(str(pagina) + "16", escola4)
                                                         if str(pagina) + "18" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "18", canticoMeio)
                                                         if str(pagina) + "19" in run.text:
