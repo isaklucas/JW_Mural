@@ -7,9 +7,7 @@
 
 2. Adicionar label Congregaçao
 
-3. Utilizaçao de Idioma Ao selecionar diferente idioma um novo template é utilizado referente ao idioma.
-
-4. Refaturaçao do Codigo e Adicionar comentarios
+3. Refaturaçao do Codigo e Adicionar comentarios
 
 
 ## Upcoming Features 
