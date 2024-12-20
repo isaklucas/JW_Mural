@@ -225,10 +225,33 @@ class MyApp:
                                                 print(f"Div após {topico1} não encontrada na página.")
                                                 
                                                 
+                                        # Variável para armazenar o texto dentro da tag "Comentários finais"
+                                        texto_comentarios_finais = None
+
+                                        # Procurar pela tag que contém o texto "Comentários finais"
+                                        for tag in tags_h3:
+                                                if "Comentários finais" in tag.get_text():
+                                                        # Se encontrarmos a tag, podemos imprimir ou fazer o que for necessário com ela
+                                                        #print("Tag com 'Comentários finais':", tag)
+                                                        # Extrair o texto da tag, se necessário
+                                                        texto_comentarios_finais = tag.get_text()
+                                                        #print("Texto dentro da tag:", texto_comentarios_finais)
+                                                        break  # Interromper o loop, já que encontramos o que queríamos
+                                                
+
+                                        # Se encontramos o texto dentro da tag "Comentários finais", procedemos com a extração da segunda parte
+                                        if texto_comentarios_finais:
+                                                # Dividir o texto pelo caractere "|"
+                                                partes = texto_comentarios_finais.split("|")
+                                                if len(partes) >= 2:
+                                                        # Atribuir a segunda parte à variável 'canticoFinal'
+                                                        canticoFinal = partes[1].strip()  # removendo espaços em branco em excesso
+                                                        #print('Cantico Final:', canticoFinal)
+                                                else:
+                                                        print("Não foi possível extrair a segunda parte do texto")
                                         
-                                        
-                                        canticoFinalTemp = tags_h3[-3].get_text().split('|')
-                                        canticoFinal = canticoFinalTemp[1]
+                                        # canticoFinalTemp = tags_h3[-3].get_text().split('|')
+                                       # canticoFinal = canticoFinalTemp[1]
                                         print('Cantico Final : ' + canticoFinal)
                                                 
  
