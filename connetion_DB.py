@@ -1,23 +1,46 @@
-import pymongo
+import boto3
+from boto3.dynamodb.conditions import Key
 import datetime
+import util.comandosUteis as util
 
-client = pymongo.MongoClient("mongodb://localhost:27017/")
+# Configurar a conexão com o DynamoDB
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1') 
 
-db = client["JW_Mural"]
-
-publicadoresDB = db["Publicadores"]
-
-
+# Referenciar a tabela
+table = dynamodb.Table('publicadores')  # Substitua pelo nome da sua tabela
 
 def post(nome, batizado):
-    
-    now = datetime.datetime.now()
-     
-    json = { "Nome": nome, "Batizado": batizado, "Data_inclusao": now, "Ultima_Parte": "" }
-     
-    publicadoresDB.insert_one(json)
-    
+    now = datetime.datetime.now().isoformat()
+    nome = util.ComandosUteis.TitleCase(nome)
+    item = {
+        "nome": nome.strip(),
+        "batizado": batizado,
+        "data_inclusao": now,
+        "ultima_parte": "",
+        "historico": []
+    }
+    print(f"Adicionando novo publicador {nome} ao DynamoDB")
+    table.put_item(Item=item)
 
 def getAllPub():
-    
-    return  publicadoresDB.find()
+    response = table.scan()
+    return response['Items']
+
+def delete(nome):
+    nome = util.ComandosUteis.TitleCase(nome)
+    print(f"Removendo publicador {nome} do DynamoDB")
+    table.delete_item(Key={"nome": nome.strip()})
+
+def update_parte(nome, parte , semana):
+    nome = util.ComandosUteis.TitleCase(nome)
+    print(f"Atualizando publicador {nome} no DynamoDB")
+    now = datetime.datetime.now().isoformat()
+    table.update_item(
+        Key={"nome": nome.strip()},
+        UpdateExpression="set ultima_parte = :p, historico = list_append(if_not_exists(historico, :empty_list), :h)",
+        ExpressionAttributeValues={
+            ":p": semana,
+            ":h": [{"parte": parte, "data": semana}],
+            ":empty_list": []
+        }
+    )

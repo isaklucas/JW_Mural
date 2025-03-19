@@ -4,6 +4,11 @@ import docx
 import os
 import subprocess
 import re
+import connetion_DB
+import tkinter as tk
+from tkinter import simpledialog
+from enum import Enum
+import datetime
 
 
 
@@ -11,8 +16,14 @@ import re
 
 
 class MyApp:
-        def run(urlEv, nomeEv, idiomaEv):
-                
+        def run(urlEv, nomeEv, idiomaEv , utilizarBase):
+                nomes_publicadores = []
+                # busco no banco de dados Crio uma Lista com todos os nomes_publicadores de publicadores
+                if utilizarBase:
+                        publicadores = connetion_DB.getAllPub()
+                        nomes_publicadores = [pub['nome'] for pub in publicadores]
+                        print(nomes_publicadores)
+   
                 # Variaveis digitadas pelo Usuario
                 idioma = idiomaEv
                 filename = nomeEv
@@ -87,7 +98,7 @@ class MyApp:
                                         
                                         ## Pega Tesouro
                                         tesouroTemp = soup.find(id="p5").get_text()
-                                        tesouro = tesouroTemp
+                                        tesouro = tesouroTemp.split('1.')[1]
                                         print('1. Tesouro : ' + tesouro)
                                         
                                         ## Pergunta das Joias
@@ -250,11 +261,117 @@ class MyApp:
                                                 else:
                                                         print("Não foi possível extrair a segunda parte do texto")
                                         
-                                        # canticoFinalTemp = tags_h3[-3].get_text().split('|')
-                                       # canticoFinal = canticoFinalTemp[1]
+             
                                         print('Cantico Final : ' + canticoFinal)
+                                                                
+                                        def solicitar_nome_publicador(parte, nomes_publicadores):
+                                                if utilizarBase is False:
+                                                        return "nome"
                                                 
- 
+                                                
+                                                root = tk.Tk()
+                                                root.withdraw()  # Esconde a janela principal
+                                                
+                                                
+
+                                                def on_submit():
+                                                                nonlocal nome
+                                                                nome = entry.get()
+                                                                root.destroy()
+
+                                                def update_listbox(*args):
+                                                                                search_term = entry.get().lower()
+                                                                                listbox.delete(0, tk.END)
+                                                                                if '/' in search_term:
+                                                                                                                last_term = search_term.split('/')[-1].strip()
+                                                                                                                for nome in nomes_publicadores:
+                                                                                                                                                if last_term in nome.lower():
+                                                                                                                                                                                listbox.insert(tk.END, nome)
+                                                                                else:
+                                                                                                                for nome in nomes_publicadores:
+                                                                                                                                                if search_term in nome.lower():
+                                                                                                                                                                                listbox.insert(tk.END, nome)
+
+                                                def on_listbox_select(event):
+                                                                                selection = event.widget.curselection()
+                                                                                if selection:
+                                                                                                                index = selection[0]
+                                                                                                                selected_name = event.widget.get(index)
+                                                                                                                current_text = entry.get()
+                                                                                                                if '/' in current_text:
+                                                                                                                                                parts = current_text.split('/')
+                                                                                                                                                entry.delete(0, tk.END)
+                                                                                                                                                entry.insert(0, parts[0] + ' / ' + selected_name)
+                                                                                                                else:
+                                                                                                                                                entry.delete(0, tk.END)
+                                                                                                                                                entry.insert(0, selected_name)
+
+                                                
+                                                top = tk.Toplevel(root)
+                                                top.title(f"Semana: {semana} - {parte}")
+                                                top.geometry("300x300")
+                                                #sempre aparecer no meio do desktop
+                                                top.update_idletasks()
+                                                width = top.winfo_width()
+                                                height = top.winfo_height()
+                                                x = (top.winfo_screenwidth() // 2) - (width // 2)
+                                                y = (top.winfo_screenheight() // 2) - (height // 2)
+                                                top.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+                                                
+                                                
+                                                
+
+                                                label = tk.Label(top, text=f"publicador para a parte {parte}:")
+                                                label.pack()
+
+                                                entry = tk.Entry(top)
+                                                entry.pack()
+                                                entry.focus_set()
+                                                entry.bind("<KeyRelease>", update_listbox)
+
+                                                listbox = tk.Listbox(top)
+                                                listbox.pack()
+                                                listbox.bind("<<ListboxSelect>>", on_listbox_select)
+
+                                                for nome in nomes_publicadores:
+                                                                                listbox.insert(tk.END, nome)
+
+                                                submit_button = tk.Button(top, text="OK", command=on_submit)
+                                                submit_button.pack()
+
+                                                nome = None
+                                                root.wait_window(top)
+                                                return nome
+                                                
+                                        
+                                        nome_presidente = solicitar_nome_publicador("Presidente" , nomes_publicadores)
+                                        nome_oracaoInicial = solicitar_nome_publicador("Oraçao Inicial" , nomes_publicadores)
+                                        nome_tesouro = solicitar_nome_publicador("Tesouro" , nomes_publicadores)
+                                        nome_joias = solicitar_nome_publicador("Joias" , nomes_publicadores)
+                                        nome_leitura = solicitar_nome_publicador("Leitura" , nomes_publicadores)
+                                        nome_iniciandoConversa = solicitar_nome_publicador("Iniciando Conversa" , nomes_publicadores)
+                                        nome_cultivandoInteresse = solicitar_nome_publicador("Cultivando Interesse" , nomes_publicadores)
+                                        
+                                        if estudoDiscurso != "não possui":
+                                                nome_estudoDiscurso = solicitar_nome_publicador("Estudo ou Discurso" , nomes_publicadores)
+                                        else: 
+                                                nome_estudoDiscurso = "não possui"
+                                       
+                                        if escola4 != "não possui":
+                                                nome_escola4 = solicitar_nome_publicador("Escola Parte 4" , nomes_publicadores)
+                                        else:
+                                                nome_escola4 = "não possui"
+                                        
+                                        nome_nvc1 = solicitar_nome_publicador("NVC Parte 1" , nomes_publicadores)
+                                        
+                                        if nvcP2 != "não possue esta Parte":
+                                                nome_nvc2 = solicitar_nome_publicador("NVC Parte 2" , nomes_publicadores)
+                                        else:
+                                                nome_nvc2 = "não possui"
+                                        
+                                        nome_estudo = solicitar_nome_publicador("Estudo e leitor" , nomes_publicadores)
+                                                                   
+                                       
                                         for paragraph in doc.paragraphs:
                                                 for run in paragraph.runs:
                                                         if str(pagina) + "01" in run.text:
@@ -286,26 +403,72 @@ class MyApp:
                                                         if str(pagina) + "21" in run.text:
                                                                         run.text = run.text.replace(str(pagina) + "21", estudo)
                                                         if str(pagina) + "23" in run.text:
-                                                                        run.text = run.text.replace(str(pagina) + "23", canticoFinal)
+                                                                        run.text = run.text.replace(str(pagina) + "23", canticoFinal)   
+                                                        if str(pagina) + "34" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "34", nome_presidente)                     
+                                                        if str(pagina) + "35" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "35", nome_oracaoInicial)         
+                                                        if str(pagina) + "36" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "36", nome_tesouro)
+                                                        if str(pagina) + "37" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "37", nome_joias)
+                                                        if str(pagina) + "38" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "38", nome_leitura)
+                                                        if str(pagina) + "39" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "39", nome_iniciandoConversa)
+                                                        if str(pagina) + "40" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "40", nome_cultivandoInteresse)                        
+                                                        if str(pagina) + "41" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "41", nome_estudoDiscurso)                        
+                                                        if str(pagina) + "42" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "42", nome_escola4)                        
+                                                        if str(pagina) + "43" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "43", nome_nvc1)                        
+                                                        if str(pagina) + "44" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "44", nome_nvc2)                        
+                                                        if str(pagina) + "45" in run.text:
+                                                                                run.text = run.text.replace(str(pagina) + "45", nome_estudo)                        
+                                                     
+                                        if utilizarBase:
+                                                def get_parte_nome(index):
+                                                        partes = ["Presidente", "Oraçao Inicial", "Tesouro", "Joias", "Leitura", "Iniciando Conversa", "Cultivando Interesse", "Estudo ou Discurso", "Escola Parte 4", "NVC Parte 1", "NVC Parte 2", "Dirigente ou leitor"]
+                                                        return partes[index]
+                                                
+                                                participantes_na_semana = [nome_presidente, nome_oracaoInicial, nome_tesouro, nome_joias, nome_leitura, nome_iniciandoConversa, nome_cultivandoInteresse, nome_estudoDiscurso, nome_escola4, nome_nvc1, nome_nvc2, nome_estudo]
+                                                for index, nome in enumerate(participantes_na_semana):
+                                                        if nome != "não possui":
+                                                                # nome contem / ?
+                                                                if '/' in nome:
+                                                                        partes = nome.split('/')
+                                                                        for parte in partes:
+                                                                                if parte.strip() not in nomes_publicadores:
+                                                                                        print(f"O nome '{parte.strip()}' não foi encontrado na lista de publicadores. Adicionando a Base")
+                                                                                        connetion_DB.post(parte.strip(), False)
+                                                                        
+                                                                        partes = [parte.strip() for parte in partes]
+                                                                        data_participacao = f"{semana} de {datetime.datetime.now().year}"
+                                                                        for parte in partes:
+                                                                                connetion_DB.update_parte(parte, get_parte_nome(index), data_participacao)
+                                                                        return
                                                                 
-
-
-                                       
-                                                                
-                               
-                                
+                                                                elif nome not in nomes_publicadores:
+                                                                        print(f"O nome '{nome}' não foi encontrado na lista de publicadores. Adicionando a Base")
+                                                                        connetion_DB.post(nome, False)
+                                                                        
+                                                                ano = datetime.datetime.now().year
+                                                                data_participacao = f"{semana} de {ano}"
+                                                                parte = get_parte_nome(index)
+                                                                connetion_DB.update_parte(nome, parte, data_participacao)        
+                                           
+                                                     
+                                                     
+                                                                                
                                 pagina = chr(ord(pagina) + 1)
-
-                
-                if not os.path.exists("documentosCriados"):
-                        os.makedirs("documentosCriados")
 
                 doc.save("documentosCriados/" + nomeArquivo)
                 # Exibindo mensagem de sucesso
                 print("Programaçao Criada com Sucesso na pasta DocumentosCriados com Nome:", str(nomeArquivo))
                 
                 
-                subprocess.run(["start", "documentosCriados/" + nomeArquivo], shell=True)
-                
-
-
+                subprocess.run(["start", "documentosCriados/" + nomeArquivo], shell=True)                                                      
+                                           

@@ -2,7 +2,7 @@ import sys
 from cx_Freeze import setup, Executable
 
 # Dependências do seu código
-build_exe_options = {"packages": ["os" , "requests" , "bs4" , "docx", "tkinter", "pymongo", "datetime", "webbrowser"], "excludes": [],
+build_exe_options = {"packages": ["os" , "requests" , "bs4" , "docx", "tkinter", "pymongo", "datetime", "webbrowser", "boto3"], "excludes": [],
      "include_files": ["layout.py", "JW_Mural.py", "connetion_DB.py"] 
      }
 
