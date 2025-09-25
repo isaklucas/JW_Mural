@@ -1,0 +1,10 @@
+ttkbootstrap
+pymongo
+python-docx
+Pillow
+requests
+beautifulsoup4
+pyinstaller
+matplotlib
+boto3
+python-dotenv

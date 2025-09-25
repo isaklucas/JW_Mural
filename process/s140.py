@@ -4,13 +4,16 @@ import docx
 import os
 import subprocess
 import re
-import connetion_DB
+from database import db_ops
 import tkinter as tk
 from tkinter import simpledialog
 from enum import Enum
 import datetime
 import process.webscrapper as webscrapper
 import util.janelas as janela
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 class s140:
     def gerar_s140(urlEv, nomeEv, idiomaEv , preencherPubs, qntdSemanas):
@@ -231,6 +234,7 @@ class s140:
    
     def buscarSoupDasSemnas(urlEv, qntdSemanas):
         urlEnviada = urlEv
+        baseJWURL = "https://wol.jw.org"
         
         # Pega a Semana que está na URL
         urlSplit = urlEnviada.split("/")
@@ -247,12 +251,20 @@ class s140:
                         base_url = base_url  + urlSplit[v]
                 else : base_url = base_url + "/" + urlSplit[v]
                 
+        linkSemanas = []
         listaSoupSemanas = []
         
+        print("Iniciando Busca de URL Semanas ")
         for i in range(x, y):
             url = base_url + "/" + str(i)
-            print("Iniciando o webscrapper: " + url )
-            soupSemana = webscrapper.webscrapper.executar(url)
+            link = webscrapper.webscrapper.executarBuscaURL(url)
+            linkSemanas.append(link)
+
+        print("Links das Semanas Encontradas: ", linkSemanas)
+        for link in linkSemanas:        
+            urlCompleta = baseJWURL + link
+            print("Iniciando Busca de Soup Semana : " + urlCompleta )
+            soupSemana = webscrapper.webscrapper.executar(urlCompleta)
             listaSoupSemanas.append(soupSemana)
             
         return listaSoupSemanas
@@ -260,7 +272,7 @@ class s140:
         
     def solicitarNomePublicadorPartes(partesPorSemana):
         ## para cada semana
-        publicadores = connetion_DB.getAllPub()
+        publicadores = db_ops.getAllPub()
         nomes_publicadores = [pub['nome'] for pub in publicadores]
         print(nomes_publicadores)
         for semana in partesPorSemana:
@@ -400,31 +412,65 @@ class s140:
     
     
     def atualizarHistoricoPublicadores(partesPorSemana):
-        publicadores = connetion_DB.getAllPub()
-        nomes_publicadores = [pub['nome'] for pub in publicadores]
-        
-        listaPublicadoresNaoEncontrados = []
-        
         for semana in partesPorSemana:
-            for parte in semana['Participantes']:
-                if semana['Participantes'][parte] != "não possui":
-                    nome_participante = semana['Participantes'][parte]
-                    if '/' in nome_participante:
-                            nomes = semana['Participantes'][parte].split('/')
-                            for nome in nomes:
-                                if nome.strip() not in nomes_publicadores:
-                                    print(f"O nome '{nome}' não foi encontrado na lista de publicadores. Adicionando a Base")
-                                    listaPublicadoresNaoEncontrados.append((nome.strip(), parte, semana['semana']))
-                                else:
-                                    print(f"nome: {nome} - parte: {parte} - semana: {semana['semana']}")
-                                    connetion_DB.update_parte(nome.strip(), parte.strip(), semana['semana'])
-                    elif semana['Participantes'][parte] not in nomes_publicadores:
-                        print(f"O nome '{nome_participante}' não foi encontrado na lista de publicadores. Adicionando a Base")
-                        listaPublicadoresNaoEncontrados.append((nome_participante, parte, semana['semana']))
-                    else:
-                        connetion_DB.update_parte(nome_participante, parte, semana['semana'])
-                    
-        for nome in listaPublicadoresNaoEncontrados:
-            janela.janelas.verificarInclusaoPublicador(nome[0], nome[1], nome[2])
+            participantes = semana['Participantes']
+            
+            # Primeiro salva a reunião completa
+            ano = datetime.datetime.now().year
+            dados_reuniao = {
+                'ano': ano,
+                'semana': semana['semana'],
+                'data_reuniao': datetime.datetime.now().isoformat(),
+                'presidente': participantes['Presidente'],
+                'oracao_inicial': participantes['OracaoInicial'],
+                'tesouro': participantes['Tesouro'],
+                'joias_espirituais': participantes['Joias'],
+                'leitura_biblia': participantes['Leitura'],
+                'escola': {
+                    'primeira_parte': participantes['IniciandoConversa'],
+                    'segunda_parte': participantes['CultivandoInteresse'],
+                    'terceira_parte': participantes['EstudoDiscurso'],
+                    'quarta_parte': participantes['Escola4']
+                },
+                'nossa_vida_crista': {
+                    'primeira_parte': participantes['Nvc1'],
+                    'segunda_parte': participantes['Nvc2']
+                },
+                'estudo_congregacao': participantes['Estudo'],
+                'oracao_final': 'não possui'  # Campo obrigatório, mas não preenchido no S-140
+            }
+            
+            # Salva a reunião no banco
+            resultado = db_ops.salvar_reuniao(dados_reuniao)
+            if resultado['success']:
+                print(f"Reunião da semana {semana['semana']} salva com sucesso")
+            else:
+                print(f"Erro ao salvar reunião da semana {semana['semana']}: {resultado['message']}")
+            
+            # Atualiza histórico individual dos participantes
+            if participantes['Presidente'] != "não possui":
+                db_ops.update_parte(participantes['Presidente'], "Presidente", semana['semana'])
+            if participantes['OracaoInicial'] != "não possui":
+                db_ops.update_parte(participantes['OracaoInicial'], "Oração Inicial", semana['semana'])
+            if participantes['Tesouro'] != "não possui":
+                db_ops.update_parte(participantes['Tesouro'], "Tesouro", semana['semana'])
+            if participantes['Joias'] != "não possui":
+                db_ops.update_parte(participantes['Joias'], "Joias", semana['semana'])
+            if participantes['Leitura'] != "não possui":
+                db_ops.update_parte(participantes['Leitura'], "Leitura", semana['semana'])
+            if participantes['IniciandoConversa'] != "não possui":
+                db_ops.update_parte(participantes['IniciandoConversa'], "Iniciando Conversa", semana['semana'])
+            if participantes['CultivandoInteresse'] != "não possui":
+                db_ops.update_parte(participantes['CultivandoInteresse'], "Cultivando Interesse", semana['semana'])
+            if participantes['EstudoDiscurso'] != "não possui":
+                db_ops.update_parte(participantes['EstudoDiscurso'], "Estudo/Discurso", semana['semana'])
+            if participantes['Escola4'] != "não possui":
+                db_ops.update_parte(participantes['Escola4'], "Escola 4ª Parte", semana['semana'])
+            if participantes['Nvc1'] != "não possui":
+                db_ops.update_parte(participantes['Nvc1'], "Nossa Vida Cristã 1ª Parte", semana['semana'])
+            if participantes['Nvc2'] != "não possui":
+                db_ops.update_parte(participantes['Nvc2'], "Nossa Vida Cristã 2ª Parte", semana['semana'])
+            if participantes['Estudo'] != "não possui":
+                db_ops.update_parte(participantes['Estudo'], "Estudo de Congregação", semana['semana'])
         
         print("Historico Atualizado com Sucesso")    

@@ -4,7 +4,7 @@ import docx
 import os
 import subprocess
 import re
-import connetion_DB
+from database import post, getAllPub, delete
 import tkinter as tk
 from tkinter import simpledialog
 from enum import Enum
@@ -23,3 +23,19 @@ class webscrapper:
                 return soup
         else:
             return None
+    
+    def executarBuscaURL(url):
+        response = requests.get(url)
+        if response.status_code == 200:
+        
+            # Analisando o HTML com BeautifulSoup
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            link = soup.find('a', class_='cardLine1Prominent')
+            
+            if link and 'href' in link.attrs:
+                return link['href']
+            else:
+                return None
+        else:
+            return None    
