@@ -29,7 +29,7 @@ class s140:
         s140.criarDocumentoApartirDoObjeto(partesPorSemana , preencherPubs , nomeEv , idiomaEv)
         
         if preencherPubs:
-            s140.atualizarHistoricoPublicadores(partesPorSemana)
+            s140.atualizarHistoricoPublicadores(partesPorSemana , urlEv)
            
                
        
@@ -315,7 +315,8 @@ class s140:
                 'Escola4': nome_escola4,
                 'Nvc1': nome_nvc1,
                 'Nvc2': nome_nvc2,
-                'Estudo': nome_estudo
+                'Estudo': nome_estudo,
+                'OracaoFinal': nomePresidente
             }
             
             semana['Participantes'] = participantes
@@ -437,40 +438,16 @@ class s140:
                     'segunda_parte': participantes['Nvc2']
                 },
                 'estudo_congregacao': participantes['Estudo'],
-                'oracao_final': 'não possui'  # Campo obrigatório, mas não preenchido no S-140
+                'oracao_final': participantes['Presidente'] 
             }
             
             # Salva a reunião no banco
+            # Nota: salvar_reuniao() já atualiza o histórico dos publicadores automaticamente
+            # via _atualizar_historico_publicadores(), então não é necessário chamar update_parte() novamente
             resultado = db_ops.salvar_reuniao(dados_reuniao)
             if resultado['success']:
                 print(f"Reunião da semana {semana['semana']} salva com sucesso")
             else:
                 print(f"Erro ao salvar reunião da semana {semana['semana']}: {resultado['message']}")
-            
-            # Atualiza histórico individual dos participantes
-            if participantes['Presidente'] != "não possui":
-                db_ops.update_parte(participantes['Presidente'], "Presidente", semana['semana'])
-            if participantes['OracaoInicial'] != "não possui":
-                db_ops.update_parte(participantes['OracaoInicial'], "Oração Inicial", semana['semana'])
-            if participantes['Tesouro'] != "não possui":
-                db_ops.update_parte(participantes['Tesouro'], "Tesouro", semana['semana'])
-            if participantes['Joias'] != "não possui":
-                db_ops.update_parte(participantes['Joias'], "Joias", semana['semana'])
-            if participantes['Leitura'] != "não possui":
-                db_ops.update_parte(participantes['Leitura'], "Leitura", semana['semana'])
-            if participantes['IniciandoConversa'] != "não possui":
-                db_ops.update_parte(participantes['IniciandoConversa'], "Iniciando Conversa", semana['semana'])
-            if participantes['CultivandoInteresse'] != "não possui":
-                db_ops.update_parte(participantes['CultivandoInteresse'], "Cultivando Interesse", semana['semana'])
-            if participantes['EstudoDiscurso'] != "não possui":
-                db_ops.update_parte(participantes['EstudoDiscurso'], "Estudo/Discurso", semana['semana'])
-            if participantes['Escola4'] != "não possui":
-                db_ops.update_parte(participantes['Escola4'], "Escola 4ª Parte", semana['semana'])
-            if participantes['Nvc1'] != "não possui":
-                db_ops.update_parte(participantes['Nvc1'], "Nossa Vida Cristã 1ª Parte", semana['semana'])
-            if participantes['Nvc2'] != "não possui":
-                db_ops.update_parte(participantes['Nvc2'], "Nossa Vida Cristã 2ª Parte", semana['semana'])
-            if participantes['Estudo'] != "não possui":
-                db_ops.update_parte(participantes['Estudo'], "Estudo de Congregação", semana['semana'])
         
         print("Historico Atualizado com Sucesso")    

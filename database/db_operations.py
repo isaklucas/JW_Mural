@@ -168,6 +168,63 @@ class DatabaseOperations:
             logger.error(f"Erro ao limpar histórico: {str(e)}")
             raise
 
+    def resetar_todo_historico(self):
+        """
+        Reseta todo o histórico: limpa o campo historico de todos os publicadores
+        e remove todos os registros da tabela de reuniões.
+        
+        Returns:
+            dict: {"success": bool, "message": str}
+        """
+        try:
+            logger.warning("Iniciando reset completo do histórico - esta operação é irreversível!")
+            
+            if self.db_type != 'mongodb':
+                logger.warning("Reset completo de histórico só está disponível para MongoDB")
+                return {
+                    "success": False,
+                    "message": "Reset completo de histórico só está disponível para MongoDB"
+                }
+            
+            # Limpar histórico de todos os publicadores
+            logger.info("Limpando histórico de todos os publicadores...")
+            resultado_publicadores = self.db.update_many(
+                {},
+                {
+                    "$set": {
+                        "ultima_parte": "",
+                        "historico": []
+                    }
+                }
+            )
+            logger.info(f"Histórico limpo para {resultado_publicadores.modified_count} publicadores")
+            
+            # Limpar todas as reuniões
+            logger.info("Removendo todas as reuniões...")
+            collection_reunioes = self.db['reunioes']
+            resultado_reunioes = collection_reunioes.delete_many({})
+            logger.info(f"{resultado_reunioes.deleted_count} reuniões removidas")
+            
+            mensagem = f"Histórico resetado com sucesso! {resultado_publicadores.modified_count} publicadores atualizados e {resultado_reunioes.deleted_count} reuniões removidas."
+            
+            logger.info(mensagem)
+            
+            return {
+                "success": True,
+                "message": mensagem,
+                "publicadores_atualizados": resultado_publicadores.modified_count,
+                "reunioes_removidas": resultado_reunioes.deleted_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao resetar histórico completo: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "message": f"Erro ao resetar histórico: {str(e)}"
+            }
+
     def salvar_reuniao(self, dados_reuniao):
         """
         Salva ou atualiza uma reunião no banco de dados.
@@ -293,8 +350,9 @@ class DatabaseOperations:
                 (dados_reuniao['oracao_final'], "Oração Final")
             ]
             
-            # Dicionário para controlar partes já atribuídas
-            partes_atribuidas = {}
+            # Conjunto para controlar combinações (publicador, parte) já processadas
+            # Isso evita que o mesmo publicador faça a mesma parte duas vezes
+            combinacoes_processadas = set()
             # Dicionário para registrar todas as partes atribuídas a cada publicador
             participantes_partes = {}
             
@@ -308,18 +366,16 @@ class DatabaseOperations:
                             if nome_individual:  # Verifica se não está vazio
                                 nome_formatado = util.ComandosUteis.TitleCase(nome_individual.strip())
                                 
-                                # Verificar se esta parte já foi atribuída antes
-                                if parte in partes_atribuidas:
-                                    # Se a mesma parte já está atribuída ao mesmo publicador, é duplicação
-                                    if nome_formatado in partes_atribuidas[parte]:
-                                        logger.warning(f"DUPLICAÇÃO DETECTADA: {nome_formatado} já foi designado para '{parte}' na mesma reunião. Ignorando duplicação.")
-                                        continue
-                                    else:
-                                        # Parte já existe, mas para outro publicador - adicionar este publicador à lista
-                                        partes_atribuidas[parte].append(nome_formatado)
-                                else:
-                                    # Primeira atribuição desta parte
-                                    partes_atribuidas[parte] = [nome_formatado]
+                                # Criar chave única: (publicador, parte)
+                                chave = (nome_formatado, parte)
+                                
+                                # Verificar se esta combinação já foi processada
+                                if chave in combinacoes_processadas:
+                                    logger.warning(f"DUPLICAÇÃO DETECTADA: {nome_formatado} já foi designado para '{parte}' na mesma reunião. Ignorando duplicação.")
+                                    continue
+                                
+                                # Marcar como processada
+                                combinacoes_processadas.add(chave)
                                 
                                 # Registrar todas as partes deste publicador
                                 if nome_formatado in participantes_partes:
@@ -327,23 +383,21 @@ class DatabaseOperations:
                                 else:
                                     participantes_partes[nome_formatado] = [parte]
                                     
-                                # Atualizar histórico somente se não for duplicação
+                                # Atualizar histórico
                                 self._atualizar_historico_individual(nome_individual, parte, data_participacao)
                     else:
                         nome_formatado = util.ComandosUteis.TitleCase(nome.strip())
                         
-                        # Verificar se esta parte já foi atribuída antes
-                        if parte in partes_atribuidas:
-                            # Se a mesma parte já está atribuída ao mesmo publicador, é duplicação
-                            if nome_formatado in partes_atribuidas[parte]:
-                                logger.warning(f"DUPLICAÇÃO DETECTADA: {nome_formatado} já foi designado para '{parte}' na mesma reunião. Ignorando duplicação.")
-                                continue
-                            else:
-                                # Parte já existe, mas para outro publicador - adicionar este publicador à lista
-                                partes_atribuidas[parte].append(nome_formatado)
-                        else:
-                            # Primeira atribuição desta parte
-                            partes_atribuidas[parte] = [nome_formatado]
+                        # Criar chave única: (publicador, parte)
+                        chave = (nome_formatado, parte)
+                        
+                        # Verificar se esta combinação já foi processada
+                        if chave in combinacoes_processadas:
+                            logger.warning(f"DUPLICAÇÃO DETECTADA: {nome_formatado} já foi designado para '{parte}' na mesma reunião. Ignorando duplicação.")
+                            continue
+                        
+                        # Marcar como processada
+                        combinacoes_processadas.add(chave)
                         
                         # Registrar todas as partes deste publicador
                         if nome_formatado in participantes_partes:
@@ -351,7 +405,7 @@ class DatabaseOperations:
                         else:
                             participantes_partes[nome_formatado] = [parte]
                             
-                        # Atualizar histórico somente se não for duplicação
+                        # Atualizar histórico
                         self._atualizar_historico_individual(nome, parte, data_participacao)
             
             # Exibir informações sobre publicadores com múltiplas partes
@@ -443,28 +497,46 @@ class DatabaseOperations:
 
     def buscar_reuniao(self, ano, semana):
         """
-        Busca uma reunião específica pelo ano e semana
+        Busca uma reunião específica pelo ano e semana.
+        Tenta diferentes variações de formatação para encontrar a reunião.
         """
         try:
             collection_reunioes = self.db['reunioes']
             # Adicionar log para debug
             logger.info(f"Buscando reunião - Ano: {ano}, Semana: {semana}")
             
-            # Normalizar a semana substituindo diferentes tipos de traços
-            semana_normalizada = semana.upper().replace('-', '–').replace(' A ', '–')
-            logger.info(f"Semana normalizada: {semana_normalizada}")
+            # Normalizar a semana para maiúsculas e remover espaços extras
+            semana_normalizada = semana.upper().strip()
             
-            reuniao = collection_reunioes.find_one({
-                "ano": ano,
-                "semana": semana_normalizada
-            })
+            # Tentar diferentes variações de formatação
+            # No banco pode estar: "9-15 DE JUNHO" ou "9–15 DE JUNHO" ou "9 A 15 DE JUNHO"
+            variacoes = [
+                semana_normalizada,  # Exatamente como recebido
+                semana_normalizada.replace('–', '-'),  # En-dash para hífen simples
+                semana_normalizada.replace('-', '–'),  # Hífen simples para en-dash
+                semana_normalizada.replace(' A ', '-'),  # " A " para hífen
+                semana_normalizada.replace(' A ', '–'),  # " A " para en-dash
+            ]
+            
+            # Remover duplicatas mantendo a ordem
+            variacoes = list(dict.fromkeys(variacoes))
+            
+            reuniao = None
+            for variacao in variacoes:
+                logger.info(f"Tentando buscar com semana: {variacao}")
+                reuniao = collection_reunioes.find_one({
+                    "ano": ano,
+                    "semana": variacao
+                })
+                if reuniao:
+                    logger.info(f"Reunião encontrada com variação: {variacao}")
+                    break
             
             # Log do resultado
             if reuniao:
-                logger.info("Reunião encontrada")
                 reuniao['_id'] = str(reuniao['_id'])  # Converter ObjectId para string
             else:
-                logger.warning(f"Nenhuma reunião encontrada para semana: {semana_normalizada}")
+                logger.warning(f"Nenhuma reunião encontrada para semana: {semana_normalizada} (tentou {len(variacoes)} variações)")
                 
             return reuniao
             
@@ -474,94 +546,45 @@ class DatabaseOperations:
 
     def buscar_historico_publicador(self, nome_publicador):
         """
-        Busca o histórico de participação de um publicador nas reuniões
+        Busca o histórico de participação de um publicador diretamente do campo 'historico' no documento do publicador.
+        Retorna o array de histórico que está armazenado no banco de dados.
         """
         try:
             nome_publicador = util.ComandosUteis.TitleCase(nome_publicador.strip())
-            collection_reunioes = self.db['reunioes']
             
-            # Criar query para buscar todas as reuniões onde o publicador participou
-            query = {
-                "$or": [
-                    {"presidente": nome_publicador},
-                    {"oracao_inicial": nome_publicador},
-                    {"tesouro": nome_publicador},
-                    {"joias_espirituais": nome_publicador},
-                    {"leitura_biblia": nome_publicador},
-                    {"escola.primeira_parte": nome_publicador},
-                    {"escola.segunda_parte": nome_publicador},
-                    {"escola.terceira_parte": nome_publicador},
-                    {"escola.quarta_parte": nome_publicador},
-                    {"nossa_vida_crista.primeira_parte": nome_publicador},
-                    {"nossa_vida_crista.segunda_parte": nome_publicador},
-                    {"estudo_congregacao": nome_publicador},
-                    {"oracao_final": nome_publicador}
-                ]
-            }
+            # Buscar o publicador no banco de dados
+            if self.db_type == 'mongodb':
+                publicador = self.db.find_one({"nome": nome_publicador})
+            else:
+                # Para DynamoDB
+                response = self.db.get_item(Key={"nome": nome_publicador})
+                publicador = response.get('Item')
             
-            # Buscar reuniões e ordenar por data_reuniao decrescente (mais recente primeiro)
-            reunioes = collection_reunioes.find(query).sort("data_reuniao", -1)
+            if not publicador:
+                logger.warning(f"Publicador {nome_publicador} não encontrado")
+                return []
             
-            historico = []
-            for reuniao in reunioes:
-                participacoes = []
-                
-                # Verificar cada parte que o publicador participou
-                if reuniao['presidente'] == nome_publicador:
-                    participacoes.append("Presidente")
-                if reuniao['oracao_inicial'] == nome_publicador:
-                    participacoes.append("Oração Inicial")
-                if reuniao['tesouro'] == nome_publicador:
-                    participacoes.append("Tesouro")
-                if reuniao['joias_espirituais'] == nome_publicador:
-                    participacoes.append("Joias Espirituais")
-                if reuniao['leitura_biblia'] == nome_publicador:
-                    participacoes.append("Leitura da Bíblia")
-                if reuniao['escola']['primeira_parte'] == nome_publicador:
-                    participacoes.append("Escola - Primeira Parte")
-                if reuniao['escola']['segunda_parte'] == nome_publicador:
-                    participacoes.append("Escola - Segunda Parte")
-                if reuniao['escola']['terceira_parte'] == nome_publicador:
-                    participacoes.append("Escola - Terceira Parte")
-                if reuniao['escola']['quarta_parte'] == nome_publicador:
-                    participacoes.append("Escola - Quarta Parte")
-                if reuniao['nossa_vida_crista']['primeira_parte'] == nome_publicador:
-                    participacoes.append("Nossa Vida Cristã - Primeira Parte")
-                if reuniao['nossa_vida_crista']['segunda_parte'] == nome_publicador:
-                    participacoes.append("Nossa Vida Cristã - Segunda Parte")
-                if reuniao['estudo_congregacao'] == nome_publicador:
-                    participacoes.append("Estudo de Congregação")
-                if reuniao['oracao_final'] == nome_publicador:
-                    participacoes.append("Oração Final")
-                
-                # Formatar data para exibição
-                try:
-                    # Converter a data da reunião para datetime
-                    data = datetime.datetime.fromisoformat(reuniao['data_reuniao'])
-                    # Subtrair 4 dias para obter a data real da reunião
-                    data_real = data - datetime.timedelta(days=4)
-                    # Formatar a data ajustada
-                    data_formatada = data_real.strftime("%d/%m/%Y")
-                except:
-                    # Fallback para o formato antigo se não conseguir converter a data
-                    data_formatada = reuniao['semana'] + "/" + str(reuniao['ano'])
-                
-                # Para cada participação, criar um registro separado
-                for parte in participacoes:
-                    historico.append({
-                        "data": data_formatada,
-                        "parte": parte
-                    })
+            # Obter o array de histórico diretamente do documento do publicador
+            historico = publicador.get('historico', [])
             
+            if not historico:
+                logger.info(f"Publicador {nome_publicador} não possui histórico")
+                return []
+            
+            # Retornar o histórico como está no banco (array de objetos com 'parte' e 'data')
+            logger.info(f"Histórico encontrado para {nome_publicador}: {len(historico)} registros")
             return historico
             
         except Exception as e:
             logger.error(f"Erro ao buscar histórico do publicador: {str(e)}")
-            return None
+            import traceback
+            traceback.print_exc()
+            return []
 
     def listar_reunioes(self, ano=None, semana=None, limite=50, pagina=1):
         """
-        Lista as reuniões com opção de filtro por ano e semana
+        Lista as reuniões com opção de filtro por ano e semana.
+        Ordena por data_reuniao em ordem decrescente (mais recente primeiro).
         """
         try:
             collection_reunioes = self.db['reunioes']
@@ -573,12 +596,17 @@ class DatabaseOperations:
             if semana is not None:
                 query["semana"] = semana
             
+            # Se não há filtros específicos, usar limite maior para retornar todas as reuniões
+            if ano is None and semana is None:
+                limite = 10000  # Limite alto para retornar todas as reuniões
+            
             # Calcular skip para paginação
             skip = (pagina - 1) * limite
             
-            # Buscar reuniões com paginação e ordenação
+            # Buscar reuniões ordenadas por data_reuniao em ordem decrescente (mais recente primeiro)
+            # Se não houver data_reuniao, usar ordenação por ano e semana como fallback
             reunioes = collection_reunioes.find(query) \
-                                        .sort([("ano", -1), ("semana", -1)]) \
+                                        .sort("data_reuniao", -1) \
                                         .skip(skip) \
                                         .limit(limite)
             
@@ -806,6 +834,229 @@ class DatabaseOperations:
         except Exception as e:
             logger.error(f"Erro ao contar reuniões por publicador: {str(e)}")
             print(f"ERRO ao contar reuniões por publicador: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    def contar_participacoes_unicas_por_reuniao(self):
+        """
+        Conta quantas reuniões cada publicador participou de forma única.
+        Cada reunião conta apenas 1x por publicador, mesmo que ele tenha feito múltiplas partes.
+        
+        Returns:
+            tuple: (total_reunioes, dict) onde dict é {nome_publicador: quantidade_reunioes} ordenado por quantidade
+        """
+        try:
+            if self.db_type != 'mongodb':
+                logger.warning("Tipo de banco de dados não é MongoDB. Tipo: " + str(self.db_type))
+                return (0, {})
+            
+            # Acessar collection de reuniões (mesma lógica usada em outros métodos)
+            collection_reunioes = self.db['reunioes']
+            
+            # Buscar todas as reuniões
+            reunioes = list(collection_reunioes.find({}))
+            total_reunioes = len(reunioes)
+            
+            logger.info(f"Total de reuniões encontradas: {total_reunioes}")
+            
+            if not reunioes:
+                logger.info("Nenhuma reunião encontrada no banco de dados.")
+                return (0, {})
+            
+            # Dicionário para armazenar participações únicas por publicador
+            # {nome_publicador: set de reuniões onde participou}
+            participacoes_unicas = {}
+            
+            # Processar cada reunião
+            for i, reuniao in enumerate(reunioes):
+                # Identificador único da reunião (ano + semana)
+                ano = reuniao.get('ano', '')
+                semana = reuniao.get('semana', '')
+                id_reuniao = f"{ano}_{semana}"
+                
+                # Lista de todos os participantes nesta reunião
+                participantes = []
+                
+                # Adicionar presidente
+                if reuniao.get('presidente') and reuniao.get('presidente') != "não possui":
+                    if '/' in reuniao['presidente']:
+                        participantes.extend([p.strip() for p in reuniao['presidente'].split('/')])
+                    else:
+                        participantes.append(reuniao['presidente'])
+                
+                # Adicionar oração inicial
+                if reuniao.get('oracao_inicial') and reuniao.get('oracao_inicial') != "não possui":
+                    if '/' in reuniao['oracao_inicial']:
+                        participantes.extend([p.strip() for p in reuniao['oracao_inicial'].split('/')])
+                    else:
+                        participantes.append(reuniao['oracao_inicial'])
+                
+                # Adicionar tesouro
+                if reuniao.get('tesouro') and reuniao.get('tesouro') != "não possui":
+                    if '/' in reuniao['tesouro']:
+                        participantes.extend([p.strip() for p in reuniao['tesouro'].split('/')])
+                    else:
+                        participantes.append(reuniao['tesouro'])
+                
+                # Adicionar joias espirituais
+                if reuniao.get('joias_espirituais') and reuniao.get('joias_espirituais') != "não possui":
+                    if '/' in reuniao['joias_espirituais']:
+                        participantes.extend([p.strip() for p in reuniao['joias_espirituais'].split('/')])
+                    else:
+                        participantes.append(reuniao['joias_espirituais'])
+                
+                # Adicionar leitura da bíblia
+                if reuniao.get('leitura_biblia') and reuniao.get('leitura_biblia') != "não possui":
+                    if '/' in reuniao['leitura_biblia']:
+                        participantes.extend([p.strip() for p in reuniao['leitura_biblia'].split('/')])
+                    else:
+                        participantes.append(reuniao['leitura_biblia'])
+                
+                # Adicionar escola ministerial
+                if 'escola' in reuniao:
+                    for parte in ['primeira_parte', 'segunda_parte', 'terceira_parte', 'quarta_parte']:
+                        if parte in reuniao['escola'] and reuniao['escola'][parte] and reuniao['escola'][parte] != "não possui":
+                            if '/' in reuniao['escola'][parte]:
+                                participantes.extend([p.strip() for p in reuniao['escola'][parte].split('/')])
+                            else:
+                                participantes.append(reuniao['escola'][parte])
+                
+                # Adicionar nossa vida cristã
+                if 'nossa_vida_crista' in reuniao:
+                    for parte in ['primeira_parte', 'segunda_parte']:
+                        if parte in reuniao['nossa_vida_crista'] and reuniao['nossa_vida_crista'][parte] and reuniao['nossa_vida_crista'][parte] != "não possui":
+                            if '/' in reuniao['nossa_vida_crista'][parte]:
+                                participantes.extend([p.strip() for p in reuniao['nossa_vida_crista'][parte].split('/')])
+                            else:
+                                participantes.append(reuniao['nossa_vida_crista'][parte])
+                
+                # Adicionar estudo de congregação
+                if reuniao.get('estudo_congregacao') and reuniao.get('estudo_congregacao') != "não possui":
+                    if '/' in reuniao['estudo_congregacao']:
+                        participantes.extend([p.strip() for p in reuniao['estudo_congregacao'].split('/')])
+                    else:
+                        participantes.append(reuniao['estudo_congregacao'])
+                
+                # Adicionar oração final
+                if reuniao.get('oracao_final') and reuniao.get('oracao_final') != "não possui":
+                    if '/' in reuniao['oracao_final']:
+                        participantes.extend([p.strip() for p in reuniao['oracao_final'].split('/')])
+                    else:
+                        participantes.append(reuniao['oracao_final'])
+                
+                # Padronizar nomes e remover duplicatas (cada publicador conta 1x por reunião)
+                participantes_unicos = set([util.ComandosUteis.TitleCase(p) for p in participantes if p.strip()])
+                
+                # Adicionar participação única para cada publicador nesta reunião
+                for nome in participantes_unicos:
+                    if nome not in participacoes_unicas:
+                        participacoes_unicas[nome] = set()
+                    participacoes_unicas[nome].add(id_reuniao)
+            
+            # Converter sets para contagem
+            resultado = {nome: len(reunioes_participadas) for nome, reunioes_participadas in participacoes_unicas.items()}
+            
+            # Ordenar por quantidade (decrescente)
+            resultado_ordenado = dict(sorted(resultado.items(), key=lambda x: x[1], reverse=True))
+            
+            logger.info(f"Contagem concluída. Publicadores com participações únicas: {len(resultado_ordenado)}")
+            
+            return (total_reunioes, resultado_ordenado)
+            
+        except Exception as e:
+            logger.error(f"Erro ao contar participações únicas por reunião: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return (0, {})
+
+    def contar_participacoes_por_parte(self, parte=None):
+        """
+        Conta as participações de cada publicador, opcionalmente filtradas por parte específica.
+        
+        Args:
+            parte (str, optional): Nome da parte para filtrar. 
+                Se None, conta todas as participações.
+                Se "__EXCLUIR_ORACOES__", conta todas exceto orações (Oração Inicial e Oração Final).
+            
+        Returns:
+            dict: Dicionário com {nome_publicador: quantidade} ordenado por quantidade (decrescente)
+        """
+        try:
+            if self.db_type != 'mongodb':
+                logger.warning("Tipo de banco de dados não é MongoDB. Tipo: " + str(self.db_type))
+                return {}
+            
+            # self.db é a collection de publicadores (retornada por get_connection())
+            # No pymongo, uma collection tem a propriedade 'database' para acessar o database
+            # Mas também podemos usar self.db diretamente já que é a collection de publicadores
+            
+            # Verificar se self.db tem o método find (é uma collection)
+            if hasattr(self.db, 'find'):
+                # self.db é uma collection, usar diretamente
+                collection_publicadores = self.db
+            else:
+                # self.db pode ser o database, acessar a collection
+                collection_publicadores = self.db['publicadores']
+            
+            # Buscar todos os publicadores
+            publicadores = list(collection_publicadores.find({}, {"nome": 1, "historico": 1, "_id": 0}))
+            
+            logger.info(f"Publicadores encontrados na busca: {len(publicadores)}")
+            
+            if not publicadores:
+                logger.warning("Nenhum publicador encontrado no banco de dados.")
+                # Tentar buscar sem filtro de campos para ver se há dados
+                total = collection_publicadores.count_documents({})
+                logger.info(f"Total de documentos na collection: {total}")
+                return {}
+            
+            # Dicionário para armazenar contagem de participações
+            participacoes = {}
+            
+            # Lista de partes de oração para excluir
+            partes_oracao = ["Oração Inicial", "Oração Final"]
+            
+            # Processar cada publicador
+            for publicador in publicadores:
+                nome = publicador.get('nome', '')
+                historico = publicador.get('historico', [])
+                
+                if not nome:
+                    continue
+                
+                # Se parte especificada, filtrar histórico por essa parte
+                if parte:
+                    if parte == "__EXCLUIR_ORACOES__":
+                        # Excluir orações: contar todas as participações exceto orações
+                        participacoes_parte = [h for h in historico if h.get('parte') not in partes_oracao]
+                        quantidade = len(participacoes_parte)
+                    else:
+                        # Filtrar apenas as participações da parte especificada
+                        participacoes_parte = [h for h in historico if h.get('parte') == parte]
+                        quantidade = len(participacoes_parte)
+                else:
+                    # Contar todas as participações
+                    quantidade = len(historico)
+                
+                # Adicionar ao dicionário se houver participações
+                if quantidade > 0:
+                    participacoes[nome] = quantidade
+            
+            # Ordenar por quantidade (decrescente)
+            participacoes_ordenadas = dict(sorted(participacoes.items(), key=lambda x: x[1], reverse=True))
+            
+            logger.info(f"Contagem concluída. Publicadores com participações: {len(participacoes_ordenadas)}")
+            if parte:
+                if parte == "__EXCLUIR_ORACOES__":
+                    logger.info(f"Filtro aplicado: Todas as Partes Menos Oração")
+                else:
+                    logger.info(f"Filtro aplicado: {parte}")
+            
+            return participacoes_ordenadas
+            
+        except Exception as e:
+            logger.error(f"Erro ao contar participações por parte: {str(e)}")
             import traceback
             traceback.print_exc()
             return {}

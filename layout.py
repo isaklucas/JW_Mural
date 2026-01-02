@@ -1,6 +1,7 @@
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
+import tkinter as tk
 import webbrowser
 import time
 import process.s140 as s140
@@ -633,6 +634,126 @@ class ModernApp:
         )
         excluir_btn.pack(side=LEFT, padx=5)
         
+        # Botão de resetar histórico (separado visualmente)
+        def resetar_historico():
+            # Criar janela de confirmação
+            dialog = ttk.Toplevel(publicadores_window)
+            dialog.title("Confirmar Reset de Histórico")
+            
+            # Tornar a janela modal
+            dialog.transient(publicadores_window)
+            dialog.grab_set()
+            
+            # Container principal
+            dialog_frame = ttk.Frame(dialog, padding=20)
+            dialog_frame.pack(fill=BOTH, expand=YES)
+            
+            # Mensagem de aviso
+            ttk.Label(
+                dialog_frame,
+                text="⚠️ ATENÇÃO: Esta operação é IRREVERSÍVEL!",
+                font=("Helvetica", 14, "bold"),
+                bootstyle="danger"
+            ).pack(pady=(0, 10))
+            
+            ttk.Label(
+                dialog_frame,
+                text="Esta ação irá:\n• Limpar o histórico de TODOS os publicadores\n• Remover TODAS as reuniões cadastradas",
+                font=("Helvetica", 11),
+                wraplength=400,
+                justify="center"
+            ).pack(pady=(0, 20))
+            
+            ttk.Label(
+                dialog_frame,
+                text="Deseja realmente continuar?",
+                font=("Helvetica", 12, "bold"),
+                bootstyle="warning"
+            ).pack(pady=(0, 20))
+            
+            # Frame para botões
+            button_frame = ttk.Frame(dialog_frame)
+            button_frame.pack(fill=X)
+            
+            # Variável para armazenar a resposta
+            resposta = {'valor': False}
+            
+            def confirmar():
+                resposta['valor'] = True
+                dialog.destroy()
+            
+            def cancelar():
+                dialog.destroy()
+            
+            # Botões
+            ttk.Button(
+                button_frame,
+                text="Sim, Resetar Tudo",
+                command=confirmar,
+                bootstyle="danger",
+                width=20
+            ).pack(side=LEFT, padx=5)
+            
+            ttk.Button(
+                button_frame,
+                text="Cancelar",
+                command=cancelar,
+                bootstyle="secondary",
+                width=15
+            ).pack(side=LEFT, padx=5)
+            
+            # Centralizar a janela
+            dialog.update_idletasks()
+            width = 450
+            height = 250
+            x = publicadores_window.winfo_x() + (publicadores_window.winfo_width() // 2) - (width // 2)
+            y = publicadores_window.winfo_y() + (publicadores_window.winfo_height() // 2) - (height // 2)
+            dialog.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # Esperar pela resposta
+            dialog.wait_window()
+            
+            # Se confirmou, executar reset
+            if resposta['valor']:
+                try:
+                    from database import db_ops
+                    resultado = db_ops.resetar_todo_historico()
+                    
+                    if resultado['success']:
+                        from ttkbootstrap.dialogs import Messagebox
+                        Messagebox.show_info(
+                            resultado['message'],
+                            "Histórico Resetado",
+                            parent=publicadores_window
+                        )
+                        atualizar_lista()
+                    else:
+                        from ttkbootstrap.dialogs import Messagebox
+                        Messagebox.show_error(
+                            resultado['message'],
+                            "Erro ao Resetar",
+                            parent=publicadores_window
+                        )
+                except Exception as e:
+                    from ttkbootstrap.dialogs import Messagebox
+                    Messagebox.show_error(
+                        f"Erro ao resetar histórico: {str(e)}",
+                        "Erro",
+                        parent=publicadores_window
+                    )
+        
+        # Separador visual
+        ttk.Separator(action_frame, orient="vertical").pack(side=LEFT, fill=Y, padx=10)
+        
+        resetar_btn = ttk.Button(
+            action_frame,
+            text="Resetar Todo Histórico",
+            command=resetar_historico,
+            bootstyle="danger-outline",
+            width=20
+        )
+        resetar_btn.pack(side=LEFT, padx=5)
+        
         # Botão de voltar
         voltar_btn = ttk.Button(
             main_container,
@@ -767,7 +888,7 @@ class ModernApp:
         )
         
         # Configurar colunas
-        tree.heading("data", text="Data da Reunião", anchor=CENTER)
+        tree.heading("data", text="Data de Criação", anchor=CENTER)
         tree.heading("presidente", text="Presidente", anchor=CENTER)
         tree.heading("semana_ano", text="Semana/Ano", anchor=CENTER)
         tree.heading("detalhes", text="Detalhes", anchor=CENTER)
@@ -793,12 +914,13 @@ class ModernApp:
             # Obter dados da reunião selecionada
             valores = tree.item(item)['values']
             data = valores[0]  # Data formatada
-            semana_ano = valores[2]  # "Semana X/YYYY"
+            semana_ano = valores[2]  # "Semana 9-15 DE JUNHO/2025"
             
-            # Extrair ano
-            ano = int(semana_ano.split('/')[1])
-            # A semana agora é a data formatada
-            semana = data.upper()  # Convertendo para maiúsculo para garantir consistência
+            # Extrair semana e ano do formato "Semana 9-15 DE JUNHO/2025"
+            # Remover "Semana " do início e dividir por "/"
+            partes = semana_ano.replace("Semana ", "").split('/')
+            semana = partes[0].strip()  # Extrair a semana (ex: "9-15 DE JUNHO")
+            ano = int(partes[1])  # Extrair o ano
             
             # Criar janela de detalhes
             detalhes_window = ttk.Toplevel(historico_window)
@@ -927,11 +1049,12 @@ class ModernApp:
             ano = ano_var.get() if ano_var.get() else None
             
             try:
-                # Buscar reuniões
+                # Buscar reuniões - quando não há filtros, usar limite alto para retornar todas
                 from database import db_ops
+                limite = 10000 if not ano and not mes else 100
                 reunioes = db_ops.listar_reunioes(
                     ano=int(ano) if ano else None,
-                    limite=100,
+                    limite=limite,
                     pagina=1
                 )
                 
@@ -950,12 +1073,23 @@ class ModernApp:
                     data_inicio = data_reuniao - datetime.timedelta(days=data_reuniao.weekday())
                     data_fim = data_inicio + datetime.timedelta(days=6)
                     
-                    # Formatar data
-                    data_formatada = f"{data_inicio.day} de {data_inicio.strftime('%B').lower()} a {data_fim.day} de {data_fim.strftime('%B').lower()}"
+                    # Mapeamento de meses em português para números
+                    meses_pt = {
+                        'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
+                        'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
+                        'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+                    }
                     
-                    # Verificar filtro de mês
-                    if mes and data_inicio.strftime("%B").lower() != mes.lower():
-                        continue
+                    # Formatar data usando nomes de meses em português
+                    nome_mes_inicio = list(meses_pt.keys())[data_inicio.month - 1]
+                    nome_mes_fim = list(meses_pt.keys())[data_fim.month - 1]
+                    data_formatada = f"{data_inicio.day} de {nome_mes_inicio} a {data_fim.day} de {nome_mes_fim}"
+                    
+                    # Verificar filtro de mês usando número do mês
+                    if mes:
+                        mes_filtro_num = meses_pt.get(mes.lower())
+                        if mes_filtro_num and data_inicio.month != mes_filtro_num:
+                            continue
                     
                     # Inserir na tabela com ícone de seta
                     tree.insert("", END, values=(
@@ -976,6 +1110,414 @@ class ModernApp:
                 mostrar_detalhes(item)
         
         tree.bind("<ButtonRelease-1>", on_tree_click)
+        
+        # Função para criar reunião manual (definida dentro do escopo)
+        def criar_reuniao_manual_interna():
+            # Criar janela modal
+            criar_window = ttk.Toplevel(historico_window)
+            criar_window.title("Criar Reunião Manual")
+            criar_window.geometry("900x800")
+            
+            # Container principal com scroll
+            main_container_criar = ttk.Frame(criar_window, padding=20)
+            main_container_criar.pack(fill=BOTH, expand=YES)
+            
+            # Título
+            title_frame_criar = ttk.Frame(main_container_criar)
+            title_frame_criar.pack(fill=X, pady=(0, 20))
+            
+            ttk.Label(
+                title_frame_criar,
+                text="Criar Reunião Manual",
+                font=("Helvetica", 20, "bold"),
+                bootstyle="primary"
+            ).pack(side=LEFT)
+            
+            # Frame para seleção de data
+            data_frame = ttk.LabelFrame(main_container_criar, text="Seleção de Semana", padding=15)
+            data_frame.pack(fill=X, pady=(0, 20))
+            
+            # Campo para selecionar a segunda-feira da semana
+            ttk.Label(
+                data_frame,
+                text="Data da Segunda-feira:",
+                bootstyle="secondary"
+            ).pack(side=LEFT, padx=(0, 10))
+            
+            data_segunda_var = ttk.StringVar()
+            data_segunda_entry = ttk.Entry(
+                data_frame,
+                textvariable=data_segunda_var,
+                width=15,
+                bootstyle="primary"
+            )
+            data_segunda_entry.pack(side=LEFT, padx=(0, 10))
+            # Calcular próxima segunda-feira
+            hoje = datetime.datetime.now()
+            dias_para_segunda = (7 - hoje.weekday()) % 7
+            if dias_para_segunda == 0 and hoje.weekday() != 0:
+                dias_para_segunda = 7
+            proxima_segunda = hoje + datetime.timedelta(days=dias_para_segunda)
+            data_segunda_entry.insert(0, proxima_segunda.strftime("%d/%m/%Y"))
+            
+            # Botão para calcular semana
+            def calcular_semana():
+                try:
+                    # Converter data de entrada
+                    data_str = data_segunda_var.get().strip()
+                    data_segunda = datetime.datetime.strptime(data_str, "%d/%m/%Y")
+                    
+                    # Garantir que é segunda-feira (ajustar se necessário)
+                    dias_para_segunda = (data_segunda.weekday()) % 7
+                    if dias_para_segunda != 0:
+                        data_segunda = data_segunda - datetime.timedelta(days=dias_para_segunda)
+                        data_segunda_var.set(data_segunda.strftime("%d/%m/%Y"))
+                    
+                    # Calcular domingo (6 dias depois)
+                    data_domingo = data_segunda + datetime.timedelta(days=6)
+                    
+                    # Mapeamento de meses em português
+                    meses_pt = {
+                        1: 'janeiro', 2: 'fevereiro', 3: 'março', 4: 'abril',
+                        5: 'maio', 6: 'junho', 7: 'julho', 8: 'agosto',
+                        9: 'setembro', 10: 'outubro', 11: 'novembro', 12: 'dezembro'
+                    }
+                    
+                    # Formatar semana no padrão do banco: "9-15 DE JUNHO"
+                    if data_segunda.month == data_domingo.month:
+                        semana_formatada = f"{data_segunda.day}-{data_domingo.day} DE {meses_pt[data_segunda.month].upper()}"
+                    else:
+                        # Se a semana cruza meses, usar o mês da segunda-feira
+                        semana_formatada = f"{data_segunda.day}-{data_domingo.day} DE {meses_pt[data_segunda.month].upper()}"
+                    
+                    semana_label_var.set(semana_formatada)
+                    
+                except Exception as e:
+                    from ttkbootstrap.dialogs import Messagebox
+                    Messagebox.show_error(f"Erro ao calcular semana: {str(e)}", "Erro", parent=criar_window)
+            
+            ttk.Button(
+                data_frame,
+                text="Calcular Semana",
+                command=calcular_semana,
+                bootstyle="primary-outline"
+            ).pack(side=LEFT, padx=(0, 10))
+            
+            # Label para mostrar a semana formatada
+            semana_label_var = ttk.StringVar(value="")
+            semana_label = ttk.Label(
+                data_frame,
+                textvariable=semana_label_var,
+                font=("Helvetica", 11, "bold"),
+                bootstyle="info"
+            )
+            semana_label.pack(side=LEFT, padx=(10, 0))
+            
+            # Calcular semana inicial
+            calcular_semana()
+            
+            # Buscar lista de publicadores
+            from database import db_ops
+            publicadores = db_ops.getAllPub()
+            nomes_publicadores = ["não possui"] + [pub['nome'] for pub in publicadores]
+            
+            # Frame para campos de partes (com scroll)
+            scroll_frame = ttk.Frame(main_container_criar)
+            scroll_frame.pack(fill=BOTH, expand=YES)
+            
+            # Canvas para scroll
+            canvas = tk.Canvas(scroll_frame)
+            scrollbar_criar = ttk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas)
+            
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar_criar.set)
+            
+            # Frame para partes
+            partes_frame = ttk.LabelFrame(scrollable_frame, text="Partes da Reunião", padding=15)
+            partes_frame.pack(fill=BOTH, expand=YES, padx=10, pady=10)
+            
+            # Dicionário para armazenar os comboboxes
+            partes_widgets = {}
+            
+            # Lista de partes na ordem correta
+            partes_lista = [
+                ("presidente", "Presidente"),
+                ("oracao_inicial", "Oração Inicial"),
+                ("tesouro", "Tesouro"),
+                ("joias_espirituais", "Joias Espirituais"),
+                ("leitura_biblia", "Leitura da Bíblia"),
+                ("escola_primeira_parte", "Escola - Primeira Parte"),
+                ("escola_segunda_parte", "Escola - Segunda Parte"),
+                ("escola_terceira_parte", "Escola - Terceira Parte"),
+                ("escola_quarta_parte", "Escola - Quarta Parte"),
+                ("nvc_primeira_parte", "Nossa Vida Cristã - Primeira Parte"),
+                ("nvc_segunda_parte", "Nossa Vida Cristã - Segunda Parte"),
+                ("estudo_congregacao", "Estudo de Congregação"),
+                ("oracao_final", "Oração Final")
+            ]
+            
+            # Criar campos para cada parte usando Entry + Listbox (similar à tela de criar reunião)
+            for i, (key, label) in enumerate(partes_lista):
+                row_frame = ttk.Frame(partes_frame)
+                row_frame.pack(fill=X, pady=5)
+                
+                ttk.Label(
+                    row_frame,
+                    text=f"{label}:",
+                    width=30,
+                    anchor=W,
+                    bootstyle="secondary"
+                ).pack(side=LEFT, padx=(0, 10))
+                
+                # Frame para Entry e Listbox
+                input_frame = ttk.Frame(row_frame)
+                input_frame.pack(side=LEFT, fill=X, expand=YES)
+                
+                parte_var = ttk.StringVar(value="não possui")
+                parte_entry = ttk.Entry(
+                    input_frame,
+                    textvariable=parte_var,
+                    width=40,
+                    bootstyle="primary"
+                )
+                parte_entry.pack(fill=X, expand=YES)
+                
+                # Listbox para mostrar opções filtradas
+                parte_listbox = tk.Listbox(
+                    input_frame,
+                    height=5,
+                    font=("Helvetica", 10)
+                )
+                parte_listbox.pack_forget()  # Inicialmente escondido
+                
+                # Criar classe para manter estado de cada campo
+                class CampoPublicador:
+                    def __init__(self, entry, listbox, valores_completos):
+                        self.entry = entry
+                        self.listbox = listbox
+                        self.valores_completos = valores_completos
+                        self.listbox_visivel = False
+                    
+                    def update_listbox(self, event=None):
+                        texto_atual = self.entry.get().lower()
+                        
+                        # Se houver "/", pegar apenas o último termo após a barra
+                        if '/' in texto_atual:
+                            texto_atual = texto_atual.split('/')[-1].strip()
+                        
+                        # Limpar listbox
+                        self.listbox.delete(0, tk.END)
+                        
+                        # Filtrar valores
+                        if texto_atual:
+                            valores_filtrados = [v for v in self.valores_completos if texto_atual in v.lower()]
+                        else:
+                            valores_filtrados = self.valores_completos
+                        
+                        # Adicionar valores filtrados ao listbox
+                        for valor in valores_filtrados:
+                            self.listbox.insert(tk.END, valor)
+                        
+                        # Mostrar/ocultar listbox baseado em se há valores
+                        if valores_filtrados and texto_atual:
+                            if not self.listbox_visivel:
+                                self.listbox.pack(fill=X, expand=YES)
+                                self.listbox_visivel = True
+                        else:
+                            if self.listbox_visivel:
+                                self.listbox.pack_forget()
+                                self.listbox_visivel = False
+                    
+                    def on_listbox_select(self, event):
+                        selection = self.listbox.curselection()
+                        if selection:
+                            index = selection[0]
+                            selected_name = self.listbox.get(index)
+                            current_text = self.entry.get()
+                            
+                            # Se houver "/", adicionar após a barra
+                            if '/' in current_text:
+                                parts = current_text.split('/')
+                                # Manter tudo antes da última barra e adicionar o novo nome
+                                if len(parts) > 1:
+                                    # Pegar tudo antes da última barra
+                                    antes_barra = '/'.join(parts[:-1])
+                                    self.entry.delete(0, tk.END)
+                                    self.entry.insert(0, antes_barra + ' / ' + selected_name)
+                                else:
+                                    self.entry.delete(0, tk.END)
+                                    self.entry.insert(0, parts[0] + ' / ' + selected_name)
+                            else:
+                                # Se não houver "/", substituir
+                                self.entry.delete(0, tk.END)
+                                self.entry.insert(0, selected_name)
+                            
+                            # Ocultar listbox após seleção
+                            self.listbox.pack_forget()
+                            self.listbox_visivel = False
+                            # Focar no entry novamente
+                            self.entry.focus_set()
+                    
+                    def on_focus_out(self, event):
+                        # Ocultar listbox quando perder foco
+                        if self.listbox_visivel:
+                            self.listbox.pack_forget()
+                            self.listbox_visivel = False
+                
+                # Criar instância do campo
+                campo = CampoPublicador(parte_entry, parte_listbox, nomes_publicadores)
+                
+                # Bind eventos
+                parte_entry.bind('<KeyRelease>', campo.update_listbox)
+                parte_listbox.bind('<<ListboxSelect>>', campo.on_listbox_select)
+                parte_listbox.bind('<Double-Button-1>', campo.on_listbox_select)
+                parte_entry.bind('<FocusOut>', campo.on_focus_out)
+                
+                partes_widgets[key] = parte_var
+            
+            canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+            scrollbar_criar.pack(side=RIGHT, fill=Y)
+            
+            # Frame para botões
+            button_frame_criar = ttk.Frame(main_container_criar)
+            button_frame_criar.pack(fill=X, pady=(20, 0))
+            
+            def salvar_reuniao():
+                try:
+                    # Validar data
+                    data_str = data_segunda_var.get().strip()
+                    data_segunda = datetime.datetime.strptime(data_str, "%d/%m/%Y")
+                    
+                    # Garantir que é segunda-feira
+                    dias_para_segunda = (data_segunda.weekday()) % 7
+                    if dias_para_segunda != 0:
+                        data_segunda = data_segunda - datetime.timedelta(days=dias_para_segunda)
+                        data_segunda_var.set(data_segunda.strftime("%d/%m/%Y"))
+                    
+                    # Calcular domingo
+                    data_domingo = data_segunda + datetime.timedelta(days=6)
+                    
+                    # Formatar semana
+                    meses_pt = {
+                        1: 'janeiro', 2: 'fevereiro', 3: 'março', 4: 'abril',
+                        5: 'maio', 6: 'junho', 7: 'julho', 8: 'agosto',
+                        9: 'setembro', 10: 'outubro', 11: 'novembro', 12: 'dezembro'
+                    }
+                    
+                    # Formatar semana no padrão do banco: "9-15 DE JUNHO"
+                    if data_segunda.month == data_domingo.month:
+                        semana_formatada = f"{data_segunda.day}-{data_domingo.day} DE {meses_pt[data_segunda.month].upper()}"
+                    else:
+                        # Se a semana cruza meses, usar o mês da segunda-feira
+                        semana_formatada = f"{data_segunda.day}-{data_domingo.day} DE {meses_pt[data_segunda.month].upper()}"
+                    
+                    semana = semana_formatada
+                    ano = data_segunda.year
+                    
+                    # Preparar dados da reunião
+                    dados_reuniao = {
+                        'ano': ano,
+                        'semana': semana,
+                        'data_reuniao': data_segunda.isoformat(),  # Data da segunda-feira
+                        'presidente': partes_widgets['presidente'].get().strip() or "não possui",
+                        'oracao_inicial': partes_widgets['oracao_inicial'].get().strip() or "não possui",
+                        'tesouro': partes_widgets['tesouro'].get().strip() or "não possui",
+                        'joias_espirituais': partes_widgets['joias_espirituais'].get().strip() or "não possui",
+                        'leitura_biblia': partes_widgets['leitura_biblia'].get().strip() or "não possui",
+                        'escola': {
+                            'primeira_parte': partes_widgets['escola_primeira_parte'].get().strip() or "não possui",
+                            'segunda_parte': partes_widgets['escola_segunda_parte'].get().strip() or "não possui",
+                            'terceira_parte': partes_widgets['escola_terceira_parte'].get().strip() or "não possui",
+                            'quarta_parte': partes_widgets['escola_quarta_parte'].get().strip() or "não possui"
+                        },
+                        'nossa_vida_crista': {
+                            'primeira_parte': partes_widgets['nvc_primeira_parte'].get().strip() or "não possui",
+                            'segunda_parte': partes_widgets['nvc_segunda_parte'].get().strip() or "não possui"
+                        },
+                        'estudo_congregacao': partes_widgets['estudo_congregacao'].get().strip() or "não possui",
+                        'oracao_final': partes_widgets['oracao_final'].get().strip() or "não possui"
+                    }
+                    
+                    # Salvar reunião
+                    resultado = db_ops.salvar_reuniao(dados_reuniao)
+                    
+                    if resultado['success']:
+                        # Recarregar lista de reuniões antes de fechar a janela
+                        carregar_reunioes()
+                        # Mostrar mensagem de sucesso usando a janela pai
+                        from ttkbootstrap.dialogs import Messagebox
+                        Messagebox.show_info(
+                            f"Reunião criada com sucesso!\nSemana: {semana}\nAno: {ano}",
+                            "Sucesso",
+                            parent=historico_window
+                        )
+                        criar_window.destroy()
+                    else:
+                        from ttkbootstrap.dialogs import Messagebox
+                        Messagebox.show_error(
+                            resultado['message'],
+                            "Erro ao Salvar",
+                            parent=historico_window
+                        )
+                        
+                except ValueError as ve:
+                    from ttkbootstrap.dialogs import Messagebox
+                    Messagebox.show_error(
+                        f"Data inválida. Use o formato DD/MM/AAAA",
+                        "Erro de Validação",
+                        parent=historico_window
+                    )
+                except Exception as e:
+                    from ttkbootstrap.dialogs import Messagebox
+                    Messagebox.show_error(
+                        f"Erro ao salvar reunião: {str(e)}",
+                        "Erro",
+                        parent=historico_window
+                    )
+            
+            ttk.Button(
+                button_frame_criar,
+                text="Salvar Reunião",
+                command=salvar_reuniao,
+                bootstyle="success",
+                width=20
+            ).pack(side=LEFT, padx=5)
+            
+            ttk.Button(
+                button_frame_criar,
+                text="Cancelar",
+                command=criar_window.destroy,
+                bootstyle="secondary",
+                width=15
+            ).pack(side=LEFT, padx=5)
+            
+            # Centralizar janela
+            criar_window.update_idletasks()
+            width = criar_window.winfo_width()
+            height = criar_window.winfo_height()
+            x = (criar_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (criar_window.winfo_screenheight() // 2) - (height // 2)
+            criar_window.geometry(f"{width}x{height}+{x}+{y}")
+            criar_window.transient(historico_window)
+            criar_window.grab_set()
+            
+            # Foco no campo de data
+            data_segunda_entry.focus()
+        
+        # Botão de criar reunião
+        ttk.Button(
+            title_frame,
+            text="Criar Reunião",
+            command=criar_reuniao_manual_interna,
+            bootstyle="success",
+            width=20
+        ).pack(side=RIGHT, padx=(10, 0))
         
         # Botão de voltar
         voltar_btn = ttk.Button(
@@ -1547,6 +2089,49 @@ class ModernApp:
             width=25
         ).pack(side=LEFT, padx=5)
         
+        # Frame para filtro de parte (apenas para dashboard de participações)
+        filtro_frame = ttk.Frame(main_container)
+        # Não empacotar inicialmente, será mostrado apenas quando necessário
+        
+        # Lista de partes disponíveis
+        partes_disponiveis = [
+            "Todas as Partes",
+            "Todas as Partes Menos Oração",
+            "Presidente",
+            "Oração Inicial",
+            "Tesouro",
+            "Joias Espirituais",
+            "Leitura da Bíblia",
+            "Escola - Primeira Parte",
+            "Escola - Segunda Parte",
+            "Escola - Terceira Parte",
+            "Escola - Quarta Parte",
+            "Nossa Vida Cristã - Primeira Parte",
+            "Nossa Vida Cristã - Segunda Parte",
+            "Estudo de Congregação",
+            "Oração Final"
+        ]
+        
+        # Variável para controlar a parte selecionada
+        parte_selecionada = ttk.StringVar(value="Todas as Partes")
+        
+        # Label e combobox para filtro de parte
+        ttk.Label(
+            filtro_frame,
+            text="Filtrar por Parte:",
+            bootstyle="secondary"
+        ).pack(side=LEFT, padx=(0, 10))
+        
+        parte_combo = ttk.Combobox(
+            filtro_frame,
+            textvariable=parte_selecionada,
+            values=partes_disponiveis,
+            width=30,
+            state="readonly",
+            bootstyle="primary"
+        )
+        parte_combo.pack(side=LEFT, padx=(0, 10))
+        
         # Frame para os gráficos
         graphs_frame = ttk.Frame(main_container)
         graphs_frame.pack(fill=BOTH, expand=YES)
@@ -1558,6 +2143,12 @@ class ModernApp:
         matplotlib.use('TkAgg')
         
         def atualizar_grafico(*args):
+            # Mostrar/ocultar filtro de parte baseado no dashboard selecionado
+            if current_dashboard.get() == "participacoes":
+                filtro_frame.pack(fill=X, pady=(0, 10), before=graphs_frame)
+            else:
+                filtro_frame.pack_forget()
+            
             # Limpar frame de gráficos
             for widget in graphs_frame.winfo_children():
                 widget.destroy()
@@ -1566,45 +2157,62 @@ class ModernApp:
             fig, ax = plt.subplots(figsize=(10, 6))
             
             if current_dashboard.get() == "participacoes":
-                # Obter dados dos publicadores
+                # Obter filtro de parte selecionado
+                parte_filtro = parte_selecionada.get()
+                
+                # Tratar opções especiais
+                if parte_filtro == "Todas as Partes":
+                    parte_para_busca = None
+                elif parte_filtro == "Todas as Partes Menos Oração":
+                    parte_para_busca = "__EXCLUIR_ORACOES__"
+                else:
+                    parte_para_busca = parte_filtro
+                
+                # Obter dados usando o novo método
                 db = DatabaseOperations()
-                publicadores = db.getAllPub()
+                participacoes_dict = db.contar_participacoes_por_parte(parte=parte_para_busca)
                 
-                # Preparar dados para o gráfico
-                dados = []
+                if not participacoes_dict:
+                    ax.text(0.5, 0.5, "Nenhuma participação encontrada", 
+                            ha='center', va='center', fontsize=14, color='gray',
+                            transform=ax.transAxes)
+                    plt.tight_layout()
+                    canvas = FigureCanvasTkAgg(fig, master=graphs_frame)
+                    canvas.draw()
+                    canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
+                    return
                 
-                for pub in publicadores:
-                    dados.append({
-                        'nome': pub['nome'],
-                        'participacoes': len(pub.get('historico', []))
-                    })
+                # Limitar aos top 20 publicadores para melhor visualização
+                top_publicadores = list(participacoes_dict.items())[:20]
                 
-                # Ordenar do maior para o menor
-                dados.sort(key=lambda x: x['participacoes'], reverse=True)
-                
-                # Separar dados ordenados
-                nomes = [d['nome'] for d in dados]
-                participacoes = [d['participacoes'] for d in dados]
+                # Separar dados
+                nomes = [d[0] for d in top_publicadores]
+                participacoes = [d[1] for d in top_publicadores]
                 
                 # Criar gráfico de barras
-                bars = ax.bar(nomes, participacoes)
+                bars = ax.barh(nomes, participacoes)
+                
+                # Adicionar valores nas barras
+                for i, (bar, valor) in enumerate(zip(bars, participacoes)):
+                    ax.text(valor, i, f' {valor}', va='center', fontsize=9)
                 
                 # Configurar o gráfico
-                ax.set_title('Número de Participações por Publicador')
-                ax.set_xlabel('Publicadores')
-                ax.set_ylabel('Número de Participações')
-                plt.xticks(rotation=45, ha='right')
+                titulo = f'Participações por Publicador'
+                if parte_filtro != "Todas as Partes":
+                    titulo += f' - {parte_filtro}'
+                ax.set_title(titulo, fontsize=12, fontweight='bold')
+                ax.set_xlabel('Número de Participações')
+                ax.set_ylabel('Publicadores')
+                ax.invert_yaxis()  # Inverter para mostrar o maior no topo
+                plt.tight_layout()
             
             else:  # participacoes por reuniao
-                # Obter dados das reuniões diretamente do banco de dados
+                # Obter dados das reuniões usando o novo método
                 db = DatabaseOperations()
-                print("Iniciando contagem de participações por reunião...")
-                participacoes_mensais = db.contar_reunioes_por_publicador()
-                print(f"Participações mensais obtidas: {len(participacoes_mensais)} publicadores encontrados")
+                total_reunioes, participacoes_unicas = db.contar_participacoes_unicas_por_reuniao()
                 
                 # Se não houver dados, mostrar mensagem
-                if not participacoes_mensais:
-                    print("Nenhuma participação encontrada!")
+                if not participacoes_unicas:
                     ax.text(0.5, 0.5, "Nenhum dado de participação encontrado", 
                             ha='center', va='center', fontsize=14, color='gray',
                             transform=ax.transAxes)
@@ -1614,90 +2222,32 @@ class ModernApp:
                     canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
                     return
                 
-                # Vamos imprimir os primeiros itens para debug
-                print("Amostra de dados obtidos:")
-                for i, (nome, meses) in enumerate(list(participacoes_mensais.items())[:3]):
-                    print(f"Publicador: {nome}, Meses: {meses}")
+                # Limitar aos top 20 publicadores para melhor visualização
+                top_publicadores = list(participacoes_unicas.items())[:20]
                 
-                # Agregar todos os meses
-                total_participacoes = {}
-                for nome, meses in participacoes_mensais.items():
-                    total_participacoes[nome] = sum(meses.values())
+                # Separar dados
+                nomes = [d[0] for d in top_publicadores]
+                participacoes = [d[1] for d in top_publicadores]
                 
-                # Obter os 10 publicadores com mais participações
-                top_publicadores = sorted(
-                    total_participacoes.items(),
-                    key=lambda x: x[1],
-                    reverse=True
-                )[:10]
+                # Criar gráfico de barras horizontal
+                bars = ax.barh(nomes, participacoes)
                 
-                print(f"Top 10 publicadores: {top_publicadores}")
+                # Adicionar valores nas barras
+                for i, (bar, valor) in enumerate(zip(bars, participacoes)):
+                    ax.text(valor, i, f' {valor}', va='center', fontsize=9)
                 
-                # Lista de todos os meses (ordenados cronologicamente)
-                todos_meses = set()
-                for nome, meses in participacoes_mensais.items():
-                    todos_meses.update(meses.keys())
+                # Adicionar texto com total de reuniões no topo do gráfico
+                ax.text(0.02, 0.98, f'Total de Reuniões: {total_reunioes}', 
+                        transform=ax.transAxes, fontsize=12, fontweight='bold',
+                        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
                 
-                print(f"Meses encontrados: {todos_meses}")
-                
-                # Ordenar meses (formato MM/AAAA)
-                try:
-                    meses_ordenados = sorted(
-                        todos_meses,
-                        key=lambda x: (
-                            # Se for no formato MM/AAAA
-                            int(x.split('/')[1]) * 100 + int(x.split('/')[0]) 
-                            if '/' in x and x.split('/')[0].isdigit() and x.split('/')[1].isdigit()
-                            # Caso contrário, ordenar como string
-                            else 0
-                        )
-                    )
-                    print(f"Meses ordenados: {meses_ordenados}")
-                except Exception as e:
-                    print(f"Erro ao ordenar meses: {e}")
-                    print(f"Meses problemáticos: {todos_meses}")
-                    # Fallback: usar os meses sem ordenação
-                    meses_ordenados = list(todos_meses)
-                
-                # Criar gráfico agrupado por mês para os top 10 publicadores
-                largura_barra = 0.08  # Ajustar conforme necessário
-                indices = range(len(meses_ordenados))
-                
-                try:
-                    # Criar uma barra para cada publicador em cada mês
-                    for i, (nome, _) in enumerate(top_publicadores):
-                        valores = []
-                        for mes in meses_ordenados:
-                            # Obter o número de reuniões que o publicador participou neste mês
-                            valores.append(participacoes_mensais.get(nome, {}).get(mes, 0))
-                        
-                        # Posições das barras
-                        posicoes = [idx + i * largura_barra for idx in indices]
-                        
-                        # Criar barras
-                        ax.bar(
-                            posicoes,
-                            valores,
-                            largura_barra,
-                            label=nome
-                        )
-                    
-                    # Configurar eixos
-                    ax.set_xticks([idx + (len(top_publicadores) - 1) * largura_barra / 2 for idx in indices])
-                    ax.set_xticklabels(meses_ordenados, rotation=45, ha='right')
-                    
-                    # Configurar o gráfico
-                    ax.set_title('Participações em Reuniões por Mês - Top 10 Publicadores')
-                    ax.set_xlabel('Mês')
-                    ax.set_ylabel('Número de Reuniões')
-                    ax.legend(fontsize='small')
-                    
-                    print("Gráfico criado com sucesso!")
-                except Exception as e:
-                    print(f"Erro ao criar gráfico: {e}")
-                    ax.text(0.5, 0.5, f"Erro ao criar gráfico: {str(e)}", 
-                            ha='center', va='center', fontsize=12, color='red',
-                            transform=ax.transAxes)
+                # Configurar o gráfico
+                ax.set_title('Participações Únicas por Reunião - Top Publicadores', 
+                            fontsize=12, fontweight='bold')
+                ax.set_xlabel('Número de Reuniões Participadas')
+                ax.set_ylabel('Publicadores')
+                ax.invert_yaxis()  # Inverter para mostrar o maior no topo
+                plt.tight_layout()
             
             # Ajustar layout
             plt.tight_layout()
@@ -1707,8 +2257,9 @@ class ModernApp:
             canvas.draw()
             canvas.get_tk_widget().pack(fill=BOTH, expand=YES)
         
-        # Configurar trace para atualizar o gráfico quando mudar o dashboard
+        # Configurar trace para atualizar o gráfico quando mudar o dashboard ou a parte
         current_dashboard.trace_add("write", atualizar_grafico)
+        parte_selecionada.trace_add("write", atualizar_grafico)
         
         # Carregar o gráfico inicial
         atualizar_grafico()
