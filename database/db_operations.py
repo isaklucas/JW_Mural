@@ -29,6 +29,8 @@ class DatabaseOperations:
             item = {
                 "nome": nome.strip(),
                 "batizado": batizado,
+                "Anciao": False,
+                "Servo_Ministerial": False,
                 "data_inclusao": now,
                 "ultima_parte": "",
                 "historico": []
@@ -679,6 +681,54 @@ class DatabaseOperations:
                 
         except Exception as e:
             logger.error(f"Erro ao atualizar status de batismo: {str(e)}")
+            return False
+    
+    def update_publicador(self, nome, batizado=None, anciao=None, servo_ministerial=None):
+        """
+        Atualiza os campos de um publicador (batizado, anciao, servo_ministerial)
+        
+        Args:
+            nome: Nome do publicador
+            batizado: Status de batismo (opcional)
+            anciao: Status de ancião (opcional)
+            servo_ministerial: Status de servo ministerial (opcional)
+        """
+        try:
+            # Verificar se self.db tem o método find (é uma collection)
+            if hasattr(self.db, 'find'):
+                # self.db é uma collection, usar diretamente
+                collection_publicadores = self.db
+            else:
+                # self.db pode ser o database, acessar a collection
+                collection_publicadores = self.db['publicadores']
+            
+            # Construir dicionário de atualização apenas com os campos fornecidos
+            update_data = {}
+            if batizado is not None:
+                update_data["batizado"] = batizado
+            if anciao is not None:
+                update_data["Anciao"] = anciao
+            if servo_ministerial is not None:
+                update_data["Servo_Ministerial"] = servo_ministerial
+            
+            if not update_data:
+                logger.warning("Nenhum campo para atualizar")
+                return False
+            
+            resultado = collection_publicadores.update_one(
+                {"nome": nome},
+                {"$set": update_data}
+            )
+            
+            if resultado.matched_count > 0:
+                logger.info(f"Publicador {nome} atualizado: {update_data}")
+                return True
+            else:
+                logger.warning(f"Publicador {nome} não encontrado")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao atualizar publicador: {str(e)}")
             return False
 
     def contar_reunioes_por_publicador(self):
