@@ -289,7 +289,57 @@ class ModernApp:
                 text="Batizado",
                 variable=batizado_var,
                 bootstyle="primary-round-toggle"
-            ).grid(row=1, column=0, columnspan=2, pady=20, sticky="w")
+            ).grid(row=1, column=0, columnspan=2, pady=10, sticky="w")
+            
+            # Sexo
+            ttk.Label(
+                fields_frame,
+                text="Sexo:",
+                font=("Helvetica", 12),
+                bootstyle="secondary"
+            ).grid(row=2, column=0, padx=(0, 10), pady=10, sticky="w")
+            
+            sexo_var = ttk.StringVar(value="Masculino")
+            sexo_combo = ttk.Combobox(
+                fields_frame,
+                textvariable=sexo_var,
+                values=["Masculino", "Feminino"],
+                width=20,
+                state="readonly",
+                bootstyle="primary"
+            )
+            sexo_combo.grid(row=2, column=1, sticky="w", pady=10)
+            
+            # Frame para permissões
+            permissoes_frame = ttk.LabelFrame(fields_frame, text="Permissões", padding=10)
+            permissoes_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky="ew")
+            
+            # Variáveis para permissões
+            permissao_escola_var = ttk.BooleanVar(value=True)
+            permissao_oracao_var = ttk.BooleanVar(value=True)
+            permissao_leitura_var = ttk.BooleanVar(value=True)
+            
+            # Checkboxes de permissões
+            ttk.Checkbutton(
+                permissoes_frame,
+                text="Parte da Escola",
+                variable=permissao_escola_var,
+                bootstyle="primary-round-toggle"
+            ).pack(side=LEFT, padx=(0, 15))
+            
+            ttk.Checkbutton(
+                permissoes_frame,
+                text="Oração",
+                variable=permissao_oracao_var,
+                bootstyle="primary-round-toggle"
+            ).pack(side=LEFT, padx=(0, 15))
+            
+            ttk.Checkbutton(
+                permissoes_frame,
+                text="Leitura do Livro",
+                variable=permissao_leitura_var,
+                bootstyle="primary-round-toggle"
+            ).pack(side=LEFT)
             
             # Frame do botão
             button_frame = ttk.Frame(modal_container)
@@ -298,9 +348,15 @@ class ModernApp:
             def adicionar_publicador():
                 nome = nome_entry.get()
                 batizado = batizado_var.get()
+                sexo = sexo_var.get()
+                permissoes = {
+                    "parte_escola": permissao_escola_var.get(),
+                    "oracao": permissao_oracao_var.get(),
+                    "leitura_livro": permissao_leitura_var.get()
+                }
                 if nome.strip():
                     from database import db_ops
-                    db_ops.post(nome, batizado)
+                    db_ops.post(nome, batizado, sexo=sexo, permissoes=permissoes)
                     atualizar_lista()
                     modal.destroy()
             
@@ -323,7 +379,7 @@ class ModernApp:
             # Centralizar a janela
             modal.update_idletasks()
             largura_janela = 500
-            altura_janela = 300
+            altura_janela = 450  # Aumentada para acomodar os novos campos
             x_centralizado = int((modal.winfo_screenwidth() / 2) - (largura_janela / 2))
             y_centralizado = int((modal.winfo_screenheight() / 2) - (altura_janela / 2))
             modal.geometry(f"{largura_janela}x{altura_janela}+{x_centralizado}+{y_centralizado}")
@@ -541,6 +597,63 @@ class ModernApp:
                         bootstyle="primary-round-toggle"
                     ).grid(row=3, column=0, columnspan=2, pady=10, sticky="w")
                     
+                    # Sexo
+                    ttk.Label(
+                        fields_frame,
+                        text="Sexo:",
+                        font=("Helvetica", 12),
+                        bootstyle="secondary"
+                    ).grid(row=4, column=0, padx=(0, 10), pady=10, sticky="w")
+                    
+                    sexo_var = ttk.StringVar(value=publicador.get("sexo", "Masculino"))
+                    sexo_combo = ttk.Combobox(
+                        fields_frame,
+                        textvariable=sexo_var,
+                        values=["Masculino", "Feminino"],
+                        width=20,
+                        state="readonly",
+                        bootstyle="primary"
+                    )
+                    sexo_combo.grid(row=4, column=1, sticky="w", pady=10)
+                    
+                    # Frame para permissões
+                    permissoes_frame = ttk.LabelFrame(fields_frame, text="Permissões", padding=10)
+                    permissoes_frame.grid(row=5, column=0, columnspan=2, pady=10, sticky="ew")
+                    
+                    # Obter permissões do publicador ou usar valores padrão
+                    permissoes_publicador = publicador.get("permissoes", {
+                        "parte_escola": True,
+                        "oracao": True,
+                        "leitura_livro": True
+                    })
+                    
+                    # Variáveis para permissões
+                    permissao_escola_var = ttk.BooleanVar(value=permissoes_publicador.get("parte_escola", True))
+                    permissao_oracao_var = ttk.BooleanVar(value=permissoes_publicador.get("oracao", True))
+                    permissao_leitura_var = ttk.BooleanVar(value=permissoes_publicador.get("leitura_livro", True))
+                    
+                    # Checkboxes de permissões
+                    ttk.Checkbutton(
+                        permissoes_frame,
+                        text="Parte da Escola",
+                        variable=permissao_escola_var,
+                        bootstyle="primary-round-toggle"
+                    ).pack(side=LEFT, padx=(0, 15))
+                    
+                    ttk.Checkbutton(
+                        permissoes_frame,
+                        text="Oração",
+                        variable=permissao_oracao_var,
+                        bootstyle="primary-round-toggle"
+                    ).pack(side=LEFT, padx=(0, 15))
+                    
+                    ttk.Checkbutton(
+                        permissoes_frame,
+                        text="Leitura do Livro",
+                        variable=permissao_leitura_var,
+                        bootstyle="primary-round-toggle"
+                    ).pack(side=LEFT)
+                    
                     # Última parte (somente leitura)
                     if "ultima_parte" in publicador:
                         ttk.Label(
@@ -548,14 +661,14 @@ class ModernApp:
                             text="Última Parte:",
                             font=("Helvetica", 12),
                             bootstyle="secondary"
-                        ).grid(row=4, column=0, padx=(0, 10), pady=10, sticky="w")
+                        ).grid(row=6, column=0, padx=(0, 10), pady=10, sticky="w")
                         
                         ttk.Label(
                             fields_frame,
                             text=publicador.get("ultima_parte", "N/A"),
                             font=("Helvetica", 12),
                             bootstyle="primary"
-                        ).grid(row=4, column=1, sticky="w", pady=10)
+                        ).grid(row=6, column=1, sticky="w", pady=10)
                     
                     # Botões
                     button_frame = ttk.Frame(edit_container)
@@ -566,6 +679,12 @@ class ModernApp:
                         batizado = batizado_var.get()
                         anciao = anciao_var.get()
                         servo_ministerial = servo_ministerial_var.get()
+                        sexo = sexo_var.get()
+                        permissoes = {
+                            "parte_escola": permissao_escola_var.get(),
+                            "oracao": permissao_oracao_var.get(),
+                            "leitura_livro": permissao_leitura_var.get()
+                        }
                         
                         if novo_nome.strip():
                             from database import db_ops
@@ -580,7 +699,7 @@ class ModernApp:
                                 db_ops.delete(selected_item['nome'])
                                 
                                 # Criar novo com os dados atualizados
-                                db_ops.post(novo_nome, batizado)
+                                db_ops.post(novo_nome, batizado, sexo=sexo, permissoes=permissoes)
                                 
                                 # Atualizar campos adicionais e histórico
                                 db_ops.update_publicador(novo_nome, batizado=batizado, anciao=anciao, servo_ministerial=servo_ministerial)
@@ -603,7 +722,14 @@ class ModernApp:
                                         logger.error(f"Erro ao restaurar histórico: {str(e)}")
                             else:
                                 # Atualizar todos os campos
-                                db_ops.update_publicador(selected_item['nome'], batizado=batizado, anciao=anciao, servo_ministerial=servo_ministerial)
+                                db_ops.update_publicador(
+                                    selected_item['nome'], 
+                                    batizado=batizado, 
+                                    anciao=anciao, 
+                                    servo_ministerial=servo_ministerial,
+                                    sexo=sexo,
+                                    permissoes=permissoes
+                                )
                             
                             atualizar_lista()
                             modal.destroy()
@@ -627,7 +753,7 @@ class ModernApp:
                     # Centralizar a janela
                     modal.update_idletasks()
                     largura_janela = 500
-                    altura_janela = 450  # Aumentada para acomodar os novos campos
+                    altura_janela = 550  # Aumentada para acomodar os novos campos (sexo e permissões)
                     x_centralizado = int((modal.winfo_screenwidth() / 2) - (largura_janela / 2))
                     y_centralizado = int((modal.winfo_screenheight() / 2) - (altura_janela / 2))
                     modal.geometry(f"{largura_janela}x{altura_janela}+{x_centralizado}+{y_centralizado}")

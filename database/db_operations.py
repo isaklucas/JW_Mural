@@ -22,15 +22,36 @@ class DatabaseOperations:
             except Exception as e:
                 logger.error(f"Erro ao criar índice: {str(e)}")
 
-    def post(self, nome, batizado):
+    def post(self, nome, batizado, sexo="Masculino", permissoes=None):
+        """
+        Adiciona um novo publicador ao banco de dados
+        
+        Args:
+            nome: Nome do publicador
+            batizado: Status de batismo (boolean)
+            sexo: Sexo do publicador - "Masculino" ou "Feminino" (padrão: "Masculino")
+            permissoes: Dicionário com permissões {"parte_escola": bool, "oracao": bool, "leitura_livro": bool}
+                       Se None, usa valores padrão (todos True)
+        """
         try:
             now = datetime.datetime.now().isoformat()
             nome = util.ComandosUteis.TitleCase(nome)
+            
+            # Valores padrão para permissões se não fornecidas
+            if permissoes is None:
+                permissoes = {
+                    "parte_escola": True,
+                    "oracao": True,
+                    "leitura_livro": True
+                }
+            
             item = {
                 "nome": nome.strip(),
                 "batizado": batizado,
                 "Anciao": False,
                 "Servo_Ministerial": False,
+                "sexo": sexo,
+                "permissoes": permissoes,
                 "data_inclusao": now,
                 "ultima_parte": "",
                 "historico": []
@@ -683,15 +704,18 @@ class DatabaseOperations:
             logger.error(f"Erro ao atualizar status de batismo: {str(e)}")
             return False
     
-    def update_publicador(self, nome, batizado=None, anciao=None, servo_ministerial=None):
+    def update_publicador(self, nome, batizado=None, anciao=None, servo_ministerial=None, 
+                         sexo=None, permissoes=None):
         """
-        Atualiza os campos de um publicador (batizado, anciao, servo_ministerial)
+        Atualiza os campos de um publicador
         
         Args:
             nome: Nome do publicador
             batizado: Status de batismo (opcional)
             anciao: Status de ancião (opcional)
             servo_ministerial: Status de servo ministerial (opcional)
+            sexo: Sexo do publicador - "Masculino" ou "Feminino" (opcional)
+            permissoes: Dicionário com permissões {"parte_escola": bool, "oracao": bool, "leitura_livro": bool} (opcional)
         """
         try:
             # Verificar se self.db tem o método find (é uma collection)
@@ -710,6 +734,10 @@ class DatabaseOperations:
                 update_data["Anciao"] = anciao
             if servo_ministerial is not None:
                 update_data["Servo_Ministerial"] = servo_ministerial
+            if sexo is not None:
+                update_data["sexo"] = sexo
+            if permissoes is not None:
+                update_data["permissoes"] = permissoes
             
             if not update_data:
                 logger.warning("Nenhum campo para atualizar")
