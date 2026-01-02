@@ -13,6 +13,7 @@ from util.startup_manager import initialize_application
 import sys
 import logging
 import datetime
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -998,16 +999,6 @@ class ModernApp:
         historico_window.geometry(f"{width}x{height}+{x}+{y}")
 
     def criar_quadro_de_anuncio(self):
-        def enviar():
-            # pegue os dados inseridos pelo usuário e envie para o back-end
-            url = entry_url.get()
-            nome_arquivo = entry_nome.get()
-            idioma = variavel.get()
-            utilizarBase = utilizar_base_var.get()
-            qtdSemanas = int(entry_qtdSemanas.get())
-            print(url, nome_arquivo, idioma, utilizarBase)
-            s140.s140.gerar_s140(url, nome_arquivo, idioma, utilizarBase, qtdSemanas)
-            
         quadro_de_anuncio = ttk.Toplevel(self.root)
         quadro_de_anuncio.title("Criar Reunião")
         
@@ -1112,13 +1103,124 @@ class ModernApp:
         button_frame = ttk.Frame(main_container)
         button_frame.pack(fill=X, pady=(20, 0))
         
-        ttk.Button(
+        gerar_btn = ttk.Button(
             button_frame,
             text="Gerar Reunião",
-            command=enviar,
             bootstyle="success",
             padding=(20, 15)
-        ).pack(anchor=CENTER)
+        )
+        gerar_btn.pack(anchor=CENTER)
+        
+        # Frame para loading (sempre presente, mas inicialmente vazio)
+        loading_frame = ttk.Frame(main_container)
+        # Criar elementos do loading (inicialmente não empacotados)
+        loading_label = ttk.Label(
+            loading_frame,
+            text="Gerando documento... Por favor, aguarde.",
+            font=("Helvetica", 14, "bold"),
+            bootstyle="info"
+        )
+        
+        # Progressbar indeterminado para efeito de loading
+        loading_progress = ttk.Progressbar(
+            loading_frame,
+            mode='indeterminate',
+            bootstyle="info-striped",
+            length=400
+        )
+        
+        def mostrar_loading():
+            """Mostra o indicador de loading"""
+            # Desabilitar botão primeiro
+            gerar_btn.configure(state="disabled")
+            # Remover temporariamente o button_frame para inserir o loading
+            button_frame.pack_forget()
+            # Empacotar elementos do loading no frame
+            loading_label.pack(pady=(15, 10))
+            loading_progress.pack(pady=(0, 15))
+            # Mostrar o frame de loading
+            loading_frame.pack(fill=X, pady=(20, 0))
+            # Recolocar o button_frame após o loading
+            button_frame.pack(fill=X, pady=(10, 0))
+            # Iniciar animação do progressbar
+            loading_progress.start(10)
+            # Forçar atualização imediata da interface
+            quadro_de_anuncio.update_idletasks()
+            quadro_de_anuncio.update()
+        
+        def esconder_loading():
+            """Esconde o indicador de loading"""
+            loading_progress.stop()  # Para animação do progressbar
+            # Remover elementos do loading
+            loading_label.pack_forget()
+            loading_progress.pack_forget()
+            # Esconder o frame de loading
+            loading_frame.pack_forget()
+            gerar_btn.configure(state="normal")
+            # Forçar atualização da interface
+            quadro_de_anuncio.update_idletasks()
+            quadro_de_anuncio.update()
+        
+        def processar_geracao(url, nome_arquivo, idioma, utilizarBase, qtdSemanas):
+            """Executa a geração em thread separada"""
+            try:
+                print(url, nome_arquivo, idioma, utilizarBase)
+                
+                # Executar a geração
+                s140.s140.gerar_s140(url, nome_arquivo, idioma, utilizarBase, qtdSemanas)
+                
+                # Esconder loading e mostrar sucesso
+                quadro_de_anuncio.after(0, esconder_loading)
+                quadro_de_anuncio.after(0, lambda: Messagebox.show_info(
+                    "Documento gerado com sucesso!",
+                    "Sucesso"
+                ))
+                
+            except Exception as e:
+                # Esconder loading e mostrar erro
+                quadro_de_anuncio.after(0, esconder_loading)
+                quadro_de_anuncio.after(0, lambda: Messagebox.show_error(
+                    f"Erro ao gerar documento:\n{str(e)}",
+                    "Erro"
+                ))
+                logger.error(f"Erro ao gerar reunião: {str(e)}")
+        
+        def enviar():
+            """Inicia o processo de geração em thread separada"""
+            # Validar campos obrigatórios
+            if not entry_url.get().strip():
+                Messagebox.show_warning("Por favor, preencha a URL.", "Campo Obrigatório")
+                return
+            if not entry_nome.get().strip():
+                Messagebox.show_warning("Por favor, preencha o nome do arquivo.", "Campo Obrigatório")
+                return
+            try:
+                qtd = int(entry_qtdSemanas.get())
+                if qtd <= 0:
+                    Messagebox.show_warning("A quantidade de semanas deve ser maior que zero.", "Valor Inválido")
+                    return
+            except ValueError:
+                Messagebox.show_warning("Por favor, insira um número válido para a quantidade de semanas.", "Valor Inválido")
+                return
+            
+            # Pegar os dados antes de iniciar a thread
+            url = entry_url.get()
+            nome_arquivo = entry_nome.get()
+            idioma = variavel.get()
+            utilizarBase = utilizar_base_var.get()
+            qtdSemanas = int(entry_qtdSemanas.get())
+            
+            # Mostrar loading imediatamente (antes de iniciar a thread)
+            print("Mostrando loading...")
+            mostrar_loading()
+            print("Loading mostrado")
+            
+            # Executar em thread separada
+            thread = threading.Thread(target=processar_geracao, args=(url, nome_arquivo, idioma, utilizarBase, qtdSemanas), daemon=True)
+            thread.start()
+            print("Thread iniciada")
+        
+        gerar_btn.configure(command=enviar)
         
         # Botão de voltar
         voltar_btn = ttk.Button(
