@@ -1867,7 +1867,16 @@ class ModernApp:
             text="Utilizar base de publicadores",
             variable=utilizar_base_var,
             bootstyle="primary-round-toggle"
-        ).grid(row=4, column=0, columnspan=2, pady=20, sticky="w")
+        ).grid(row=4, column=0, columnspan=2, pady=10, sticky="w")
+        
+        # Checkbox para gerar com publicadores automaticamente
+        gerar_com_publicadores_var = ttk.BooleanVar()
+        ttk.Checkbutton(
+            fields_frame,
+            text="Gerar com Publicadores (Seleção Automática)",
+            variable=gerar_com_publicadores_var,
+            bootstyle="primary-round-toggle"
+        ).grid(row=5, column=0, columnspan=2, pady=10, sticky="w")
         
         # Botão de enviar
         button_frame = ttk.Frame(main_container)
@@ -1931,13 +1940,13 @@ class ModernApp:
             quadro_de_anuncio.update_idletasks()
             quadro_de_anuncio.update()
         
-        def processar_geracao(url, nome_arquivo, idioma, utilizarBase, qtdSemanas):
+        def processar_geracao(url, nome_arquivo, idioma, utilizarBase, gerarComPublicadores, qtdSemanas):
             """Executa a geração em thread separada"""
             try:
-                print(url, nome_arquivo, idioma, utilizarBase)
+                print(url, nome_arquivo, idioma, utilizarBase, gerarComPublicadores)
                 
                 # Executar a geração
-                s140.s140.gerar_s140(url, nome_arquivo, idioma, utilizarBase, qtdSemanas)
+                s140.s140.gerar_s140(url, nome_arquivo, idioma, utilizarBase, gerarComPublicadores, qtdSemanas)
                 
                 # Esconder loading e mostrar sucesso
                 quadro_de_anuncio.after(0, esconder_loading)
@@ -1948,9 +1957,10 @@ class ModernApp:
                 
             except Exception as e:
                 # Esconder loading e mostrar erro
+                erro_msg = str(e)
                 quadro_de_anuncio.after(0, esconder_loading)
                 quadro_de_anuncio.after(0, lambda: Messagebox.show_error(
-                    f"Erro ao gerar documento:\n{str(e)}",
+                    f"Erro ao gerar documento:\n{erro_msg}",
                     "Erro"
                 ))
                 logger.error(f"Erro ao gerar reunião: {str(e)}")
@@ -1978,7 +1988,16 @@ class ModernApp:
             nome_arquivo = entry_nome.get()
             idioma = variavel.get()
             utilizarBase = utilizar_base_var.get()
+            gerarComPublicadores = gerar_com_publicadores_var.get()
             qtdSemanas = int(entry_qtdSemanas.get())
+            
+            # Validar: se gerar com publicadores, deve estar marcado "utilizar base"
+            if gerarComPublicadores and not utilizarBase:
+                Messagebox.show_warning(
+                    "Para usar 'Gerar com Publicadores', é necessário marcar 'Utilizar base de publicadores'.",
+                    "Validação"
+                )
+                return
             
             # Mostrar loading imediatamente (antes de iniciar a thread)
             print("Mostrando loading...")
@@ -1986,7 +2005,7 @@ class ModernApp:
             print("Loading mostrado")
             
             # Executar em thread separada
-            thread = threading.Thread(target=processar_geracao, args=(url, nome_arquivo, idioma, utilizarBase, qtdSemanas), daemon=True)
+            thread = threading.Thread(target=processar_geracao, args=(url, nome_arquivo, idioma, utilizarBase, gerarComPublicadores, qtdSemanas), daemon=True)
             thread.start()
             print("Thread iniciada")
         

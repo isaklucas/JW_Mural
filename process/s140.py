@@ -13,10 +13,16 @@ import process.webscrapper as webscrapper
 import util.janelas as janela
 from docx import Document
 from docx.shared import Pt
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from ttkbootstrap.dialogs import Messagebox
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import logging
+
+logger = logging.getLogger(__name__)
 
 class s140:
-    def gerar_s140(urlEv, nomeEv, idiomaEv , preencherPubs, qntdSemanas):
+    def gerar_s140(urlEv, nomeEv, idiomaEv , preencherPubs, gerarComPublicadores, qntdSemanas):
         ## Busca Soup das Semanas
        
         listaSoupSemanas = s140.buscarSoupDasSemnas(urlEv, qntdSemanas)
@@ -24,12 +30,23 @@ class s140:
         partesPorSemana = s140.extrair_partes(listaSoupSemanas)
        
         if preencherPubs:
-            s140.solicitarNomePublicadorPartes(partesPorSemana)
+            if gerarComPublicadores:
+                # Usar seleção automática (sem salvar ainda)
+                s140.selecionar_publicadores_automaticamente(partesPorSemana, salvar_imediatamente=False)
+                
+                # Mostrar resumo e permitir edição antes de gerar documento
+                if not s140.mostrar_resumo_e_editar_publicadores(partesPorSemana):
+                    # Usuário cancelou, não continuar
+                    return
+            else:
+                # Usar seleção manual
+                s140.solicitarNomePublicadorPartes(partesPorSemana)
             
         s140.criarDocumentoApartirDoObjeto(partesPorSemana , preencherPubs , nomeEv , idiomaEv)
         
-        if preencherPubs:
-            s140.atualizarHistoricoPublicadores(partesPorSemana , urlEv)
+        if preencherPubs and not gerarComPublicadores:
+            # Só atualizar histórico se foi seleção manual
+            s140.atualizarHistoricoPublicadores(partesPorSemana)
            
                
        
@@ -322,8 +339,437 @@ class s140:
             semana['Participantes'] = participantes
             
         return partesPorSemana
-                                        
-
+    
+    def selecionar_publicadores_automaticamente(partesPorSemana, salvar_imediatamente=True):
+        """
+        Seleciona automaticamente publicadores para todas as partes de todas as semanas
+        baseado em critérios de tempo sem fazer e restrições por parte.
+        
+        Args:
+            partesPorSemana: Lista de semanas com partes
+            salvar_imediatamente: Se True, salva cada reunião imediatamente após selecionar.
+                                 Se False, apenas seleciona sem salvar (para permitir edição depois).
+        """
+        print("Iniciando seleção automática de publicadores...")
+        
+        # Lista global para rastrear publicadores já selecionados em TODAS as semanas
+        # Isso evita repetir os mesmos publicadores em semanas diferentes
+        # IMPORTANTE: Como as reuniões só são salvas ao final, precisamos manter essa lista
+        # durante toda a seleção para saber quem já foi escolhido
+        publicadores_selecionados_global = []
+        
+        def adicionar_publicadores(nome, lista_local, lista_global):
+            """Adiciona publicadores tanto à lista local quanto à global"""
+            if nome != "não possui":
+                if '/' in nome:
+                    novos_pubs = [p.strip() for p in nome.split('/')]
+                    lista_local.extend(novos_pubs)
+                    lista_global.extend(novos_pubs)
+                else:
+                    lista_local.append(nome)
+                    lista_global.append(nome)
+        
+        
+        for semana in partesPorSemana:
+            print(f"Processando semana: {semana['semana']}")
+            
+            # Lista para rastrear publicadores já selecionados nesta reunião específica
+            # Inclui os já selecionados em semanas anteriores (da lista global)
+            publicadores_selecionados = list(publicadores_selecionados_global)
+            
+            # 1. Presidente (apenas Ancião)
+            nome_presidente = db_ops.selecionar_publicador_para_parte(
+                "Presidente", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_presidente, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 2. Oração Inicial (Ancião OU Servo Ministerial OU permissão de oração)
+            nome_oracao_inicial = db_ops.selecionar_publicador_para_parte(
+                "Oração Inicial", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_oracao_inicial, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 3. Tesouro (Ancião OU Servo Ministerial)
+            nome_tesouro = db_ops.selecionar_publicador_para_parte(
+                "Tesouro", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_tesouro, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 4. Joias Espirituais (Ancião OU Servo Ministerial)
+            nome_joias = db_ops.selecionar_publicador_para_parte(
+                "Joias Espirituais", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_joias, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 5. Leitura da Bíblia
+            nome_leitura = db_ops.selecionar_publicador_para_parte(
+                "Leitura da Bíblia", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_leitura, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 6. Escola - Primeira Parte (Iniciando Conversa) - 2 publicadores mesmo sexo
+            nome_iniciando_conversa = db_ops.selecionar_dois_publicadores_escola(
+                "Escola - Primeira Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_iniciando_conversa, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 7. Escola - Segunda Parte (Cultivando Interesse) - 2 publicadores mesmo sexo
+            nome_cultivando_interesse = db_ops.selecionar_dois_publicadores_escola(
+                "Escola - Segunda Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_cultivando_interesse, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 8. Escola - Terceira Parte (Estudo/Discurso)
+            # Se for Discurso: Masculino, permissão de parte da escola, não Ancião
+            # Caso contrário: 2 publicadores mesmo sexo
+            if semana['estudoDiscurso'] != "não possui":
+                # Verificar se contém "Discurso" no texto
+                if "Discurso" in semana['estudoDiscurso'] or "discurso" in semana['estudoDiscurso']:
+                    # Regra para Discurso: Masculino, permissão de parte da escola, não Ancião
+                    nome_estudo_discurso = db_ops.selecionar_publicador_para_parte(
+                        "Escola - Terceira Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+                    )
+                else:
+                    # Regra para Estudo: 2 publicadores mesmo sexo
+                    nome_estudo_discurso = db_ops.selecionar_dois_publicadores_escola(
+                        "Escola - Terceira Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+                    )
+            else:
+                nome_estudo_discurso = "não possui"
+            
+            adicionar_publicadores(nome_estudo_discurso, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 9. Escola - Quarta Parte - 2 publicadores mesmo sexo
+            if semana['escola4'] != "não possui":
+                nome_escola4 = db_ops.selecionar_dois_publicadores_escola(
+                    "Escola - Quarta Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+                )
+            else:
+                nome_escola4 = "não possui"
+            
+            adicionar_publicadores(nome_escola4, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 10. Nossa Vida Cristã - Primeira Parte (apenas Ancião)
+            nome_nvc1 = db_ops.selecionar_publicador_para_parte(
+                "Nossa Vida Cristã - Primeira Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_nvc1, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 11. Nossa Vida Cristã - Segunda Parte (apenas Ancião)
+            if semana['nvcP2'] != "não possue esta Parte":
+                nome_nvc2 = db_ops.selecionar_publicador_para_parte(
+                    "Nossa Vida Cristã - Segunda Parte", semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+                )
+            else:
+                nome_nvc2 = "não possui"
+            
+            adicionar_publicadores(nome_nvc2, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 12. Estudo de Congregação (Ancião / Ajudante masculino com permissão de leitura)
+            nome_estudo = db_ops.selecionar_estudo_congregacao(
+                semana['semana'], publicadores_selecionados, publicadores_selecionados_global
+            )
+            adicionar_publicadores(nome_estudo, publicadores_selecionados, publicadores_selecionados_global)
+            
+            # 13. Oração Final (sempre o presidente)
+            nome_oracao_final = nome_presidente
+            
+            # Criar estrutura de participantes
+            participantes = {
+                'Presidente': nome_presidente,
+                'OracaoInicial': nome_oracao_inicial,
+                'Tesouro': nome_tesouro,
+                'Joias': nome_joias,
+                'Leitura': nome_leitura,
+                'IniciandoConversa': nome_iniciando_conversa,
+                'CultivandoInteresse': nome_cultivando_interesse,
+                'EstudoDiscurso': nome_estudo_discurso,
+                'Escola4': nome_escola4,
+                'Nvc1': nome_nvc1,
+                'Nvc2': nome_nvc2,
+                'Estudo': nome_estudo,
+                'OracaoFinal': nome_oracao_final
+            }
+            
+            semana['Participantes'] = participantes
+            
+            # Salvar a reunião imediatamente apenas se solicitado
+            if salvar_imediatamente:
+                ano = datetime.datetime.now().year
+                dados_reuniao = {
+                    'ano': ano,
+                    'semana': semana['semana'],
+                    'data_reuniao': datetime.datetime.now().isoformat(),
+                    'presidente': participantes['Presidente'],
+                    'oracao_inicial': participantes['OracaoInicial'],
+                    'tesouro': participantes['Tesouro'],
+                    'joias_espirituais': participantes['Joias'],
+                    'leitura_biblia': participantes['Leitura'],
+                    'escola': {
+                        'primeira_parte': participantes['IniciandoConversa'],
+                        'segunda_parte': participantes['CultivandoInteresse'],
+                        'terceira_parte': participantes['EstudoDiscurso'],
+                        'quarta_parte': participantes['Escola4']
+                    },
+                    'nossa_vida_crista': {
+                        'primeira_parte': participantes['Nvc1'],
+                        'segunda_parte': participantes['Nvc2']
+                    },
+                    'estudo_congregacao': participantes['Estudo'],
+                    'oracao_final': participantes['OracaoFinal']
+                }
+                
+                # Salva a reunião no banco (isso atualiza o histórico automaticamente)
+                resultado = db_ops.salvar_reuniao(dados_reuniao)
+                if resultado['success']:
+                    print(f"Reunião da semana {semana['semana']} salva com sucesso")
+                else:
+                    print(f"Erro ao salvar reunião da semana {semana['semana']}: {resultado['message']}")
+            
+            print(f"Seleção automática concluída para semana {semana['semana']}")
+        
+        print("Seleção automática de publicadores concluída para todas as semanas!")
+    
+    def mostrar_resumo_e_editar_publicadores(partesPorSemana):
+        """
+        Mostra uma janela modal com resumo de todas as semanas e permite editar os publicadores selecionados.
+        
+        Returns:
+            bool: True se o usuário clicou em Salvar, False se cancelou
+        """
+        # Criar janela modal
+        # Usar uma janela temporária como root
+        temp_root = tk.Tk()
+        temp_root.withdraw()  # Esconder janela temporária
+        
+        modal = ttk.Toplevel(temp_root)
+        modal.title("Revisar e Editar Publicadores Selecionados")
+        modal.geometry("900x700")
+        modal.transient(temp_root)
+        modal.grab_set()
+        
+        # Variável para controlar se salvou ou cancelou
+        resultado_salvar = [False]
+        
+        # Container principal
+        main_container = ttk.Frame(modal, padding=20)
+        main_container.pack(fill=BOTH, expand=YES)
+        
+        # Título
+        title_label = ttk.Label(
+            main_container,
+            text="Revisar Publicadores Selecionados",
+            font=("Helvetica", 18, "bold"),
+            bootstyle="primary"
+        )
+        title_label.pack(pady=(0, 20))
+        
+        # Frame para scroll
+        scroll_frame = ttk.Frame(main_container)
+        scroll_frame.pack(fill=BOTH, expand=YES)
+        
+        # Canvas e scrollbar
+        canvas = tk.Canvas(scroll_frame)
+        scrollbar = ttk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Dicionário para armazenar os campos de entrada por semana
+        campos_por_semana = {}
+        
+        # Buscar lista de publicadores para autocomplete
+        publicadores = db_ops.getAllPub()
+        nomes_publicadores = ["não possui"] + [pub['nome'] for pub in publicadores]
+        
+        # Criar campos para cada semana
+        for idx, semana in enumerate(partesPorSemana):
+            semana_num = idx + 1
+            participantes = semana.get('Participantes', {})
+            
+            # Frame para cada semana
+            semana_frame = ttk.LabelFrame(
+                scrollable_frame,
+                text=f"Semana {semana_num}: {semana.get('semana', 'N/A')}",
+                padding=15
+            )
+            semana_frame.pack(fill=X, pady=10, padx=10)
+            
+            # Grid para campos
+            semana_frame.grid_columnconfigure(1, weight=1)
+            
+            campos_semana = {}
+            row = 0
+            
+            # Mapeamento de partes
+            partes_mapping = [
+                ('Presidente', 'Presidente'),
+                ('Oração Inicial', 'OracaoInicial'),
+                ('Tesouro', 'Tesouro'),
+                ('Joias Espirituais', 'Joias'),
+                ('Leitura da Bíblia', 'Leitura'),
+                ('Escola - Iniciando Conversa', 'IniciandoConversa'),
+                ('Escola - Cultivando Interesse', 'CultivandoInteresse'),
+                ('Escola - Estudo/Discurso', 'EstudoDiscurso'),
+                ('Escola - Parte 4', 'Escola4'),
+                ('NVC - Parte 1', 'Nvc1'),
+                ('NVC - Parte 2', 'Nvc2'),
+                ('Estudo de Congregação', 'Estudo'),
+                ('Oração Final', 'OracaoFinal')
+            ]
+            
+            for parte_nome, parte_key in partes_mapping:
+                ttk.Label(
+                    semana_frame,
+                    text=f"{parte_nome}:",
+                    font=("Helvetica", 10),
+                    bootstyle="secondary"
+                ).grid(row=row, column=0, padx=(0, 10), pady=5, sticky="w")
+                
+                # Campo de entrada com autocomplete
+                entry_var = tk.StringVar(value=participantes.get(parte_key, "não possui"))
+                entry = ttk.Entry(
+                    semana_frame,
+                    textvariable=entry_var,
+                    width=40,
+                    bootstyle="primary"
+                )
+                entry.grid(row=row, column=1, sticky="ew", pady=5)
+                
+                # Listbox para autocomplete
+                listbox = tk.Listbox(semana_frame, height=4)
+                
+                def criar_update_listbox(entry_widget, listbox_widget, nomes):
+                    def update_listbox(event):
+                        texto = entry_widget.get().lower()
+                        if texto:
+                            valores_filtrados = [n for n in nomes if texto in n.lower()]
+                            listbox_widget.delete(0, tk.END)
+                            for valor in valores_filtrados[:10]:  # Limitar a 10 resultados
+                                listbox_widget.insert(tk.END, valor)
+                            if valores_filtrados:
+                                listbox_widget.grid(row=entry_widget.grid_info()['row'], column=1, sticky="ew", pady=(0, 5))
+                        else:
+                            listbox_widget.grid_remove()
+                    return update_listbox
+                
+                def on_listbox_select(event, entry_widget, listbox_widget):
+                    selection = listbox_widget.curselection()
+                    if selection:
+                        selected_name = listbox_widget.get(selection[0])
+                        current_text = entry_widget.get()
+                        
+                        if '/' in current_text:
+                            parts = current_text.split('/')
+                            antes_barra = '/'.join(parts[:-1]) if len(parts) > 1 else parts[0]
+                            entry_widget.delete(0, tk.END)
+                            entry_widget.insert(0, antes_barra + ' / ' + selected_name)
+                        else:
+                            entry_widget.delete(0, tk.END)
+                            entry_widget.insert(0, selected_name)
+                        
+                        listbox_widget.grid_remove()
+                        entry_widget.focus_set()
+                
+                entry.bind('<KeyRelease>', criar_update_listbox(entry, listbox, nomes_publicadores))
+                listbox.bind('<<ListboxSelect>>', lambda e: on_listbox_select(e, entry, listbox))
+                listbox.bind('<Double-Button-1>', lambda e: on_listbox_select(e, entry, listbox))
+                
+                campos_semana[parte_key] = entry_var
+                row += 1
+            
+            campos_por_semana[idx] = campos_semana
+        
+        canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
+        # Frame para botões
+        button_frame = ttk.Frame(main_container)
+        button_frame.pack(fill=X, pady=(20, 0))
+        
+        def salvar_alteracoes():
+            # Atualizar participantes com os valores dos campos
+            for idx, semana in enumerate(partesPorSemana):
+                campos_semana = campos_por_semana[idx]
+                participantes = {}
+                
+                for parte_key, entry_var in campos_semana.items():
+                    participantes[parte_key] = entry_var.get().strip()
+                
+                semana['Participantes'] = participantes
+                
+                # Salvar no banco de dados
+                ano = datetime.datetime.now().year
+                dados_reuniao = {
+                    'ano': ano,
+                    'semana': semana['semana'],
+                    'data_reuniao': datetime.datetime.now().isoformat(),
+                    'presidente': participantes.get('Presidente', 'não possui'),
+                    'oracao_inicial': participantes.get('OracaoInicial', 'não possui'),
+                    'tesouro': participantes.get('Tesouro', 'não possui'),
+                    'joias_espirituais': participantes.get('Joias', 'não possui'),
+                    'leitura_biblia': participantes.get('Leitura', 'não possui'),
+                    'escola': {
+                        'primeira_parte': participantes.get('IniciandoConversa', 'não possui'),
+                        'segunda_parte': participantes.get('CultivandoInteresse', 'não possui'),
+                        'terceira_parte': participantes.get('EstudoDiscurso', 'não possui'),
+                        'quarta_parte': participantes.get('Escola4', 'não possui')
+                    },
+                    'nossa_vida_crista': {
+                        'primeira_parte': participantes.get('Nvc1', 'não possui'),
+                        'segunda_parte': participantes.get('Nvc2', 'não possui')
+                    },
+                    'estudo_congregacao': participantes.get('Estudo', 'não possui'),
+                    'oracao_final': participantes.get('OracaoFinal', participantes.get('Presidente', 'não possui'))
+                }
+                
+                resultado = db_ops.salvar_reuniao(dados_reuniao)
+                if resultado['success']:
+                    print(f"Reunião da semana {semana['semana']} salva com sucesso")
+                else:
+                    print(f"Erro ao salvar reunião da semana {semana['semana']}: {resultado['message']}")
+            
+            resultado_salvar[0] = True
+            modal.destroy()
+            temp_root.destroy()
+        
+        def cancelar():
+            resultado_salvar[0] = False
+            modal.destroy()
+            temp_root.destroy()
+        
+        ttk.Button(
+            button_frame,
+            text="Salvar e Continuar",
+            command=salvar_alteracoes,
+            bootstyle="success",
+            width=20
+        ).pack(side=LEFT, padx=(0, 10))
+        
+        ttk.Button(
+            button_frame,
+            text="Cancelar",
+            command=cancelar,
+            bootstyle="secondary",
+            width=20
+        ).pack(side=LEFT)
+        
+        # Centralizar janela
+        modal.update_idletasks()
+        x = (modal.winfo_screenwidth() // 2) - (900 // 2)
+        y = (modal.winfo_screenheight() // 2) - (700 // 2)
+        modal.geometry(f"900x700+{x}+{y}")
+        
+        # Aguardar fechamento da janela
+        modal.wait_window()
+        
+        return resultado_salvar[0]
                 
     def criarDocumentoApartirDoObjeto(partesPorSemana , preencherPubs , nomeEv , idiomaEv):
         print("Criando Documento")

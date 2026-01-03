@@ -603,6 +603,122 @@ class DatabaseOperations:
             import traceback
             traceback.print_exc()
             return []
+    
+    def calcular_tempo_sem_fazer(self, nome_publicador, parte):
+        """
+        Calcula quantas semanas se passaram desde a última vez que o publicador fez uma parte específica.
+        
+        Args:
+            nome_publicador: Nome do publicador
+            parte: Nome da parte (ex: "Presidente", "Oração Inicial", etc.)
+            
+        Returns:
+            int: Número de semanas desde a última participação. 
+                 Retorna 999 se nunca fez essa parte.
+                 Retorna 0 se fez recentemente (na mesma semana).
+        """
+        try:
+            historico = self.buscar_historico_publicador(nome_publicador)
+            
+            if not historico:
+                # Nunca fez nenhuma parte, retornar valor alto para priorizar
+                return 999
+            
+            # Filtrar histórico pela parte específica
+            participacoes_parte = [h for h in historico if h.get('parte') == parte]
+            
+            if not participacoes_parte:
+                # Nunca fez essa parte específica
+                return 999
+            
+            # Encontrar a data mais recente dessa parte
+            # Formato da data: "Semana X-Y DE MÊS de ANO" ou "X-Y DE MÊS de ANO"
+            ultima_data_str = None
+            ultima_data_obj = None
+            
+            for participacao in participacoes_parte:
+                data_str = participacao.get('data', '')
+                if not data_str:
+                    continue
+                
+                # Tentar parsear a data
+                try:
+                    # Remover "Semana " se existir
+                    data_limpa = data_str.replace("Semana ", "").strip()
+                    
+                    # Extrair ano
+                    if " de " in data_limpa:
+                        partes_data = data_limpa.split(" de ")
+                        if len(partes_data) >= 2:
+                            ano_str = partes_data[-1].strip()
+                            try:
+                                ano = int(ano_str)
+                                
+                                # Extrair mês e dias
+                                mes_dias = partes_data[0].strip()
+                                
+                                # Mapeamento de meses
+                                meses_pt = {
+                                    'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
+                                    'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
+                                    'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+                                }
+                                
+                                # Procurar o mês na string
+                                mes_num = None
+                                for mes_nome, mes_valor in meses_pt.items():
+                                    if mes_nome.upper() in mes_dias.upper():
+                                        mes_num = mes_valor
+                                        break
+                                
+                                if mes_num:
+                                    # Extrair o primeiro dia (antes do hífen ou en-dash)
+                                    import re
+                                    dias_match = re.search(r'(\d+)[\s\-–]+', mes_dias)
+                                    if dias_match:
+                                        try:
+                                            dia = int(dias_match.group(1))
+                                            
+                                            # Criar data da segunda-feira da semana
+                                            data_semana = datetime.datetime(ano, mes_num, dia)
+                                            
+                                            # Se ainda não temos uma data ou esta é mais recente
+                                            if ultima_data_obj is None or data_semana > ultima_data_obj:
+                                                ultima_data_obj = data_semana
+                                                ultima_data_str = data_str
+                                        except (ValueError, IndexError) as e:
+                                            logger.warning(f"Erro ao parsear data '{data_str}': {str(e)}")
+                                            continue
+                                    
+                            except ValueError:
+                                continue
+                                
+                except Exception as e:
+                    logger.warning(f"Erro ao processar data '{data_str}': {str(e)}")
+                    continue
+            
+            if ultima_data_obj is None:
+                # Não conseguiu parsear nenhuma data, retornar valor alto
+                return 999
+            
+            # Calcular semanas desde a última participação
+            hoje = datetime.datetime.now()
+            diferenca = hoje - ultima_data_obj
+            semanas = diferenca.days // 7
+            
+            # Se for negativo (data futura), retornar 0
+            if semanas < 0:
+                semanas = 0
+            
+            logger.debug(f"Publicador {nome_publicador} fez '{parte}' há {semanas} semanas")
+            return semanas
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular tempo sem fazer para {nome_publicador} na parte {parte}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Em caso de erro, retornar valor médio para não priorizar nem despriorizar
+            return 50
 
     def listar_reunioes(self, ano=None, semana=None, limite=50, pagina=1):
         """
@@ -1138,6 +1254,371 @@ class DatabaseOperations:
             import traceback
             traceback.print_exc()
             return {}
+
+    def selecionar_publicador_para_parte(self, parte, semana, publicadores_ja_selecionados=None, publicadores_selecionados_global=None):
+        """
+        Seleciona automaticamente um publicador para uma parte específica baseado em critérios.
+        
+        Args:
+            parte: Nome da parte (ex: "Presidente", "Oração Inicial", etc.)
+            semana: String da semana (para logging)
+            publicadores_ja_selecionados: Lista de nomes já selecionados nesta reunião (para evitar duplicação)
+            publicadores_selecionados_global: Lista de nomes já selecionados em todas as semanas anteriores
+            
+        Returns:
+            str: Nome do publicador selecionado ou "não possui" se nenhum atender critérios
+        """
+        try:
+            if publicadores_ja_selecionados is None:
+                publicadores_ja_selecionados = []
+            if publicadores_selecionados_global is None:
+                publicadores_selecionados_global = []
+            
+            # Buscar todos os publicadores
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "Anciao": 1, "Servo_Ministerial": 1, 
+                                                      "sexo": 1, "permissoes": 1, "_id": 0}))
+            else:
+                # Para DynamoDB
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            if not publicadores:
+                logger.warning("Nenhum publicador encontrado no banco de dados")
+                return "não possui"
+            
+            # 1. Aplicar filtros específicos por parte (critérios: Ancião, Servo Ministerial, permissões, sexo, etc.)
+            publicadores_filtrados = []
+            
+            if parte == "Presidente":
+                # Apenas Ancião
+                publicadores_filtrados = [p for p in publicadores if p.get("Anciao", False)]
+                
+            elif parte == "Oração Inicial":
+                # Ancião OU Servo Ministerial OU permissão de oração
+                publicadores_filtrados = [
+                    p for p in publicadores 
+                    if (p.get("Anciao", False) or 
+                        p.get("Servo_Ministerial", False) or 
+                        p.get("permissoes", {}).get("oracao", False))
+                ]
+                
+            elif parte in ["Tesouro", "Joias Espirituais"]:
+                # Apenas Ancião OU Servo Ministerial
+                publicadores_filtrados = [
+                    p for p in publicadores 
+                    if (p.get("Anciao", False) or p.get("Servo_Ministerial", False))
+                ]
+                
+            elif parte == "Leitura da Bíblia":
+                # Masculino E permissão de leitura E NÃO Ancião E NÃO Servo Ministerial
+                publicadores_filtrados = [
+                    p for p in publicadores 
+                    if (p.get("sexo") == "Masculino" and
+                        p.get("permissoes", {}).get("leitura_livro", False) and
+                        not p.get("Anciao", False) and
+                        not p.get("Servo_Ministerial", False))
+                ]
+                
+            elif parte in ["Escola - Primeira Parte", "Escola - Segunda Parte", "Escola - Quarta Parte"]:
+                # Permissão de parte da escola E NÃO Ancião E NÃO Servo Ministerial
+                # Nota: Este método retorna apenas 1 publicador, a lógica de 2 será tratada em selecionar_publicadores_automaticamente
+                publicadores_filtrados = [
+                    p for p in publicadores 
+                    if (p.get("permissoes", {}).get("parte_escola", False) and
+                        not p.get("Anciao", False) and
+                        not p.get("Servo_Ministerial", False))
+                ]
+                
+            elif parte == "Escola - Terceira Parte":  # Discurso
+                # Masculino E permissão de parte da escola E NÃO Ancião
+                publicadores_filtrados = [
+                    p for p in publicadores 
+                    if (p.get("sexo") == "Masculino" and
+                        p.get("permissoes", {}).get("parte_escola", False) and
+                        not p.get("Anciao", False))
+                ]
+                
+            elif parte in ["Nossa Vida Cristã - Primeira Parte", "Nossa Vida Cristã - Segunda Parte"]:
+                # Apenas Ancião
+                publicadores_filtrados = [p for p in publicadores if p.get("Anciao", False)]
+                
+            elif parte == "Estudo de Congregação":
+                # Ancião (principal) - a lógica de ajudante será tratada em selecionar_publicadores_automaticamente
+                publicadores_filtrados = [p for p in publicadores if p.get("Anciao", False)]
+                
+            else:
+                # Para outras partes, não filtrar (aceitar todos)
+                publicadores_filtrados = publicadores
+            
+            if not publicadores_filtrados:
+                logger.warning(f"Nenhum publicador encontrado que atenda os critérios para '{parte}'")
+                return "não possui"
+            
+            # 2. Remover os que estão em publicadores_selecionados_global (já selecionados nas semanas anteriores)
+            if publicadores_selecionados_global:
+                publicadores_candidatos = [p for p in publicadores_filtrados 
+                                         if p.get('nome') not in publicadores_selecionados_global]
+            else:
+                publicadores_candidatos = publicadores_filtrados
+            
+            # 3. Se lista vazia após remover, permitir reutilização (usar todos os filtrados)
+            if not publicadores_candidatos:
+                logger.warning(f"Lista vazia após remover selecionados. Permitindo reutilização para '{parte}'")
+                publicadores_candidatos = publicadores_filtrados
+            
+            # 4. Filtrar também os já selecionados nesta reunião específica
+            publicadores_candidatos = [p for p in publicadores_candidatos 
+                                     if p.get('nome') not in publicadores_ja_selecionados]
+            
+            # 5. Se ainda vazio, permitir reutilização mesmo nesta reunião
+            if not publicadores_candidatos:
+                logger.warning(f"Lista vazia após remover selecionados desta reunião. Permitindo reutilização para '{parte}'")
+                publicadores_candidatos = publicadores_filtrados
+            
+            # 6. Calcular tempo sem fazer para cada candidato e ordenar
+            publicadores_com_tempo = []
+            for pub in publicadores_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), parte)
+                publicadores_com_tempo.append((pub, tempo))
+            
+            # 7. Ordenar por tempo sem fazer (maior = mais tempo sem fazer = maior prioridade)
+            publicadores_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            
+            # 8. Selecionar o primeiro (que tem mais tempo sem fazer)
+            if not publicadores_com_tempo:
+                logger.warning(f"Nenhum publicador disponível para '{parte}'")
+                return "não possui"
+            
+            publicador_selecionado = publicadores_com_tempo[0][0]
+            nome_selecionado = publicador_selecionado.get('nome')
+            
+            logger.info(f"Selecionado '{nome_selecionado}' para '{parte}' (tempo sem fazer: {publicadores_com_tempo[0][1]} semanas)")
+            return nome_selecionado
+            
+        except Exception as e:
+            logger.error(f"Erro ao selecionar publicador para parte '{parte}': {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return "não possui"
+    
+    def selecionar_dois_publicadores_escola(self, parte, semana, publicadores_ja_selecionados=None, publicadores_selecionados_global=None):
+        """
+        Seleciona dois publicadores para partes da escola (mesmo sexo, permissão de parte da escola).
+        
+        Args:
+            parte: Nome da parte da escola
+            semana: String da semana
+            publicadores_ja_selecionados: Lista de nomes já selecionados nesta reunião
+            publicadores_selecionados_global: Lista de nomes já selecionados em todas as semanas anteriores
+            
+        Returns:
+            str: "Publicador1 / Publicador2" ou "não possui"
+        """
+        try:
+            if publicadores_ja_selecionados is None:
+                publicadores_ja_selecionados = []
+            if publicadores_selecionados_global is None:
+                publicadores_selecionados_global = []
+            
+            # Buscar todos os publicadores
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "Anciao": 1, "Servo_Ministerial": 1, 
+                                                      "sexo": 1, "permissoes": 1, "_id": 0}))
+            else:
+                # Para DynamoDB
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            # 1. Filtrar por critérios: permissão de parte da escola, NÃO Ancião, NÃO Servo Ministerial
+            publicadores_filtrados = [
+                p for p in publicadores 
+                if (p.get("permissoes", {}).get("parte_escola", False) and
+                    not p.get("Anciao", False) and
+                    not p.get("Servo_Ministerial", False))
+            ]
+            
+            if not publicadores_filtrados:
+                logger.warning(f"Nenhum publicador encontrado que atenda os critérios para '{parte}'")
+                return "não possui"
+            
+            # 2. Remover os que estão em publicadores_selecionados_global
+            if publicadores_selecionados_global:
+                publicadores_candidatos = [p for p in publicadores_filtrados 
+                                         if p.get('nome') not in publicadores_selecionados_global]
+            else:
+                publicadores_candidatos = publicadores_filtrados
+            
+            # 3. Se lista vazia após remover, permitir reutilização
+            if not publicadores_candidatos:
+                logger.warning(f"Lista vazia após remover selecionados. Permitindo reutilização para '{parte}'")
+                publicadores_candidatos = publicadores_filtrados
+            
+            # 4. Filtrar também os já selecionados nesta reunião específica
+            publicadores_candidatos = [p for p in publicadores_candidatos 
+                                     if p.get('nome') not in publicadores_ja_selecionados]
+            
+            # 5. Se ainda vazio, permitir reutilização mesmo nesta reunião
+            if not publicadores_candidatos:
+                logger.warning(f"Lista vazia após remover selecionados desta reunião. Permitindo reutilização para '{parte}'")
+                publicadores_candidatos = publicadores_filtrados
+            
+            if len(publicadores_candidatos) < 2:
+                logger.warning(f"Não há publicadores suficientes para '{parte}' (precisa 2, encontrado {len(publicadores_candidatos)})")
+                return "não possui"
+            
+            # 6. Calcular tempo sem fazer para cada um
+            publicadores_com_tempo = []
+            for pub in publicadores_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), parte)
+                publicadores_com_tempo.append((pub, tempo))
+            
+            # 7. Ordenar por tempo sem fazer
+            publicadores_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            
+            # 8. Selecionar o primeiro
+            primeiro = publicadores_com_tempo[0][0]
+            sexo_primeiro = primeiro.get('sexo')
+            
+            # 9. Selecionar o segundo do mesmo sexo
+            segundo_candidatos = [
+                (p, t) for p, t in publicadores_com_tempo[1:] 
+                if p.get('sexo') == sexo_primeiro and p.get('nome') != primeiro.get('nome')
+            ]
+            
+            if not segundo_candidatos:
+                logger.warning(f"Não há segundo publicador do mesmo sexo ({sexo_primeiro}) para '{parte}'")
+                return primeiro.get('nome')  # Retornar apenas o primeiro
+            
+            # 10. Ordenar segundo por tempo sem fazer
+            segundo_candidatos.sort(key=lambda x: x[1], reverse=True)
+            segundo = segundo_candidatos[0][0]
+            
+            resultado = f"{primeiro.get('nome')} / {segundo.get('nome')}"
+            logger.info(f"Selecionados para '{parte}': {resultado}")
+            return resultado
+            
+        except Exception as e:
+            logger.error(f"Erro ao selecionar dois publicadores para '{parte}': {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return "não possui"
+    
+    def selecionar_estudo_congregacao(self, semana, publicadores_ja_selecionados=None, publicadores_selecionados_global=None):
+        """
+        Seleciona publicadores para Estudo de Congregação: Ancião (principal) / Publicador masculino com permissão de leitura (ajudante).
+        
+        Args:
+            semana: String da semana
+            publicadores_ja_selecionados: Lista de nomes já selecionados nesta reunião
+            publicadores_selecionados_global: Lista de nomes já selecionados em todas as semanas anteriores
+            
+        Returns:
+            str: "Ancião / Ajudante" ou "não possui"
+        """
+        try:
+            if publicadores_ja_selecionados is None:
+                publicadores_ja_selecionados = []
+            if publicadores_selecionados_global is None:
+                publicadores_selecionados_global = []
+            
+            # Buscar todos os publicadores
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "Anciao": 1, "Servo_Ministerial": 1, 
+                                                      "sexo": 1, "permissoes": 1, "_id": 0}))
+            else:
+                # Para DynamoDB
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            # 1. Filtrar anciões
+            ancioes_filtrados = [p for p in publicadores if p.get("Anciao", False)]
+            
+            if not ancioes_filtrados:
+                logger.warning("Nenhum ancião encontrado para Estudo de Congregação")
+                return "não possui"
+            
+            # 2. Remover os que estão em publicadores_selecionados_global
+            if publicadores_selecionados_global:
+                ancioes_candidatos = [p for p in ancioes_filtrados 
+                                    if p.get('nome') not in publicadores_selecionados_global]
+            else:
+                ancioes_candidatos = ancioes_filtrados
+            
+            # 3. Se lista vazia após remover, permitir reutilização
+            if not ancioes_candidatos:
+                logger.warning("Lista vazia de anciões após remover selecionados. Permitindo reutilização...")
+                ancioes_candidatos = ancioes_filtrados
+            
+            # 4. Filtrar também os já selecionados nesta reunião específica
+            ancioes_candidatos = [p for p in ancioes_candidatos 
+                                if p.get('nome') not in publicadores_ja_selecionados]
+            
+            # 5. Se ainda vazio, permitir reutilização mesmo nesta reunião
+            if not ancioes_candidatos:
+                logger.warning("Lista vazia de anciões após remover selecionados desta reunião. Permitindo reutilização...")
+                ancioes_candidatos = ancioes_filtrados
+            
+            # 6. Calcular tempo sem fazer para anciões
+            ancioes_com_tempo = []
+            for pub in ancioes_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), "Estudo de Congregação")
+                ancioes_com_tempo.append((pub, tempo))
+            
+            ancioes_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            principal = ancioes_com_tempo[0][0]
+            
+            # 7. Selecionar ajudante (Masculino com permissão de leitura)
+            ajudantes_filtrados = [
+                p for p in publicadores 
+                if (p.get("sexo") == "Masculino" and
+                    p.get("permissoes", {}).get("leitura_livro", False) and
+                    p.get('nome') != principal.get('nome'))
+            ]
+            
+            if not ajudantes_filtrados:
+                logger.warning("Nenhum ajudante encontrado para Estudo de Congregação")
+                return principal.get('nome')  # Retornar apenas o principal
+            
+            # 8. Remover os que estão em publicadores_selecionados_global
+            if publicadores_selecionados_global:
+                ajudantes_candidatos = [p for p in ajudantes_filtrados 
+                                      if p.get('nome') not in publicadores_selecionados_global]
+            else:
+                ajudantes_candidatos = ajudantes_filtrados
+            
+            # 9. Se lista vazia após remover, permitir reutilização
+            if not ajudantes_candidatos:
+                logger.warning("Lista vazia de ajudantes após remover selecionados. Permitindo reutilização...")
+                ajudantes_candidatos = ajudantes_filtrados
+            
+            # 10. Filtrar também os já selecionados nesta reunião específica
+            ajudantes_candidatos = [p for p in ajudantes_candidatos 
+                                  if p.get('nome') not in publicadores_ja_selecionados]
+            
+            # 11. Se ainda vazio, permitir reutilização mesmo nesta reunião
+            if not ajudantes_candidatos:
+                logger.warning("Lista vazia de ajudantes após remover selecionados desta reunião. Permitindo reutilização...")
+                ajudantes_candidatos = ajudantes_filtrados
+            
+            # 12. Calcular tempo sem fazer para ajudantes
+            ajudantes_com_tempo = []
+            for pub in ajudantes_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), "Estudo de Congregação")
+                ajudantes_com_tempo.append((pub, tempo))
+            
+            ajudantes_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            ajudante = ajudantes_com_tempo[0][0]
+            
+            resultado = f"{principal.get('nome')} / {ajudante.get('nome')}"
+            logger.info(f"Selecionados para Estudo de Congregação: {resultado}")
+            return resultado
+            
+        except Exception as e:
+            logger.error(f"Erro ao selecionar publicadores para Estudo de Congregação: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return "não possui"
 
 # Criar uma instância global das operações
 db_ops = DatabaseOperations() 
