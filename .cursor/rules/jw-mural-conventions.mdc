@@ -1,0 +1,28 @@
+---
+description: Padrões do projeto JW Mural - nomenclatura, tratamento de erros, logging
+alwaysApply: true
+---
+
+# Convenções JW Mural
+
+## Idioma
+- Responder em português em documentação e mensagens ao usuário.
+
+## Nomenclatura de Nomes
+- Sempre usar `util.ComandosUteis.TitleCase(nome)` antes de salvar nomes de publicadores no banco.
+
+## Operações Longas
+- Web scraping e geração de documentos devem rodar em thread separada para não travar a UI.
+- Usar `root.after(0, callback)` ou `threading.Thread` para atualizar a interface após operações assíncronas.
+
+## Logging
+- Usar `logger = logging.getLogger(__name__)` em cada módulo.
+- Registrar erros com `logger.error()`, avisos com `logger.warning()`, informações com `logger.info()`.
+
+## Validação de Entrada
+- Validar campos obrigatórios antes de salvar no banco.
+- Verificar duplicações e formatos esperados (ex.: quantidade de semanas > 0).
+
+## Documentacao
+- sempre atualizar as documentacoes caso ajuste alguma funcionaliade 
+- criar novas documentacoes quando criar novas funcionalidades

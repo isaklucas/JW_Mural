@@ -13,6 +13,9 @@ salvar_reuniao = db_ops.salvar_reuniao
 buscar_reuniao = db_ops.buscar_reuniao
 buscar_historico_publicador = db_ops.buscar_historico_publicador
 listar_reunioes = db_ops.listar_reunioes
+salvar_reuniao_final_semana = db_ops.salvar_reuniao_final_semana
+listar_reunioes_final_semana = db_ops.listar_reunioes_final_semana
+buscar_reuniao_final_semana = db_ops.buscar_reuniao_final_semana
 
 __all__ = [
     'post',
@@ -24,5 +27,8 @@ __all__ = [
     'buscar_reuniao',
     'buscar_historico_publicador',
     'listar_reunioes',
+    'salvar_reuniao_final_semana',
+    'listar_reunioes_final_semana',
+    'buscar_reuniao_final_semana',
     'db_ops'
 ] 

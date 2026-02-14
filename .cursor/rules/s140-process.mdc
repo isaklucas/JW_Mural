@@ -1,0 +1,24 @@
+---
+description: Regras ao modificar process/s140.py - estrutura partesPorSemana, placeholders
+globs: process/s140.py
+alwaysApply: false
+---
+
+# Regras para process/s140.py
+
+## Estrutura partesPorSemana
+- Lista de dicionários, um por semana.
+- Chaves obrigatórias: `semana`, `capituloVersiculo`, `canticoInicial`, `tesouro`, `perguntaJoias`, `leituraSemana`, `iniciandoConversa`, `cultivandoInteresse`, `estudoDiscurso`, `escola4`, `canticoMeio`, `nvcP1`, `nvcP2`, `estudo`, `canticoFinal`.
+- Se `preencherPubs`: cada item deve ter `Participantes` com chaves: `Presidente`, `OracaoInicial`, `Tesouro`, `Joias`, `Leitura`, `IniciandoConversa`, `CultivandoInteresse`, `EstudoDiscurso`, `Escola4`, `Nvc1`, `Nvc2`, `Estudo`, `OracaoFinal`.
+
+## Placeholders no Template Word
+- Conteúdo: p01 (semana), p02 (capítulo), p03 (cântico inicial), p06 (tesouro), p08 (joias), p12 (leitura), p13-p16 (escola), p18 (cântico meio), p19-p21 (NVC e estudo), p23 (cântico final).
+- Publicadores: p34-p45 (Presidente, Oração Inicial, Tesouro, Joias, Leitura, IniciandoConversa, CultivandoInteresse, EstudoDiscurso, Escola4, Nvc1, Nvc2, Estudo).
+- Não alterar numeração sem atualizar `Templates/Template_PT.docx`.
+
+## Fluxo gerar_s140
+1. `buscarSoupDasSemnas` → `extrair_partes`
+2. Se `preencherPubs` e `gerarComPublicadores`: `selecionar_publicadores_automaticamente(salvar_imediatamente=False)` → `mostrar_resumo_e_editar_publicadores`
+3. Se `preencherPubs` e não automático: `solicitarNomePublicadorPartes`
+4. `criarDocumentoApartirDoObjeto`
+5. Se manual: `atualizarHistoricoPublicadores`

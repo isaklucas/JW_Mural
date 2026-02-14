@@ -34,6 +34,11 @@ class DatabaseConnection:
                 self.db.create_collection('reunioes')
                 logger.info("Collection 'reunioes' criada com sucesso")
             
+            # Garantir que a collection reunioes_final_semana existe
+            if 'reunioes_final_semana' not in self.db.list_collection_names():
+                self.db.create_collection('reunioes_final_semana')
+                logger.info("Collection 'reunioes_final_semana' criada com sucesso")
+            
             logger.info("Conexão com MongoDB estabelecida com sucesso")
         except Exception as e:
             logger.error(f"Erro ao conectar ao MongoDB: {str(e)}")

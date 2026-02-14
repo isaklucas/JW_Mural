@@ -37,12 +37,15 @@ O **JW Mural** é uma aplicação desktop desenvolvida em Python que automatiza 
 - Extração automática de dados do wol.jw.org via web scraping
 - Geração de documentos Word formatados (S140)
 - Suporte para múltiplas semanas
-- Atribuição automática de publicadores às partes
+- **Dois modos de atribuição de publicadores:**
+  - **Seleção manual:** Diálogo para cada parte, com busca e suporte a múltiplos (formato "Nome1 / Nome2")
+  - **Seleção automática:** Critérios por parte (Ancião, Servo Ministerial, permissões, sexo), prioriza quem está há mais tempo sem participar; modal de revisão permite editar antes de gerar
 - Integração com base de dados de publicadores
 
 ### 2. Gerenciar Publicadores
 - CRUD completo de publicadores
-- Status de batismo
+- Status de batismo, sexo, Ancião, Servo Ministerial
+- Permissões: parte da escola, oração, leitura na reunião
 - Busca e filtros
 - Histórico de última parte realizada
 - Validação de nomes duplicados
@@ -156,7 +159,11 @@ DYNAMODB_TABLE=publicadores
 2. Crie uma tabela no DynamoDB com a chave primária `nome` (String)
 3. Configure as variáveis de ambiente apropriadas
 
-### 6. Verificar Estrutura de Diretórios
+### 6. Corrigir .env (se usado startup.bat antigo)
+
+O `MONGODB_COLLECTION` deve ser `publicadores` (lista de pessoas). A collection `reunioes` é criada automaticamente no mesmo banco. Se o `startup.bat` criou `.env` com `MONGODB_COLLECTION=reunioes`, altere para `publicadores`.
+
+### 7. Verificar Estrutura de Diretórios
 
 Certifique-se de que os seguintes diretórios existem:
 
@@ -210,7 +217,7 @@ O sistema utiliza templates Word localizados em `Templates/`. O template padrão
 
 ### Ícone da Aplicação
 
-O ícone deve estar localizado em `assets/icon.ico` (Windows) ou `assets/icon.png` (Linux/macOS).
+O ícone deve estar localizado em `assets/icon.ico` (Windows) ou `assets/icon.png` (Linux/macOS). O build usa `assets/icon.ico`; se não existir, a aplicação inicia sem ícone. O arquivo `jw_mural_icon_40x40.png` pode ser convertido para `.ico` se necessário.
 
 ## 💻 Uso
 
@@ -239,9 +246,12 @@ python3 layout.py
    - **Quantidade de Semanas**: Número de semanas a processar
    - **Nome do Arquivo**: Nome para o documento gerado
    - **Idioma**: Idioma do template (atualmente apenas PT)
-   - **Utilizar base de publicadores**: Marque para atribuir publicadores automaticamente
+   - **Utilizar base de publicadores**: Marque para atribuir publicadores às partes
+   - **Gerar com Publicadores (Seleção Automática)**: Marque para seleção automática; o sistema escolherá publicadores com base em critérios (Ancião, SM, permissões) e tempo sem participar. Um modal de revisão permitirá editar antes de gerar o documento
 3. Clique em **"Gerar Reunião"**
-4. Se marcou "Utilizar base de publicadores", será solicitado o nome do publicador para cada parte
+4. Se marcou "Utilizar base de publicadores":
+   - **Com seleção automática:** O sistema preenche as partes e exibe um modal para revisar e editar. Clique em "Salvar e Continuar" para gerar o documento
+   - **Sem seleção automática:** Será solicitado o nome do publicador para cada parte em diálogos individuais
 5. O documento será gerado em `documentosCriados/` e aberto automaticamente
 
 ### Gerenciar Publicadores
@@ -303,7 +313,10 @@ JW_Mural/
 ├── JW_Mural.spec            # Configuração PyInstaller
 ├── layout.py                # Interface gráfica principal
 ├── requirements.txt         # Dependências Python
-└── README.md                # Este arquivo
+├── transcribe.py            # Script opcional: transcrição de áudio com Whisper
+├── README.md                # Este arquivo
+├── README_IA.md             # Especificação técnica para IA e desenvolvedores
+└── AGENTS.md                # Guia rápido para agentes IA
 ```
 
 ### Descrição dos Módulos Principais
@@ -332,6 +345,15 @@ Utilitários e helpers:
 - **startup_manager.py**: Verificações e inicialização do sistema
 - **system_checks.py**: Validação de requisitos do sistema
 - **db_utils.py**: Utilitários de banco de dados
+
+### Script Opcional: transcribe.py
+
+Script separado para transcrição de áudio usando [Whisper](https://github.com/openai/whisper). Não faz parte do fluxo principal do JW Mural. Requer instalação do Whisper (`pip install openai-whisper`) e configuração do caminho do áudio no próprio arquivo.
+
+### Documentação para Desenvolvedores
+
+- **[README_IA.md](README_IA.md)**: Especificação técnica completa (arquitetura, fluxos, modelos de dados, APIs) para assistentes de IA e desenvolvedores
+- **[AGENTS.md](AGENTS.md)**: Guia rápido para agentes IA
 
 ## 🔨 Build e Deploy
 
@@ -468,5 +490,5 @@ Para suporte, abra uma issue no repositório ou entre em contato com os mantened
 
 ---
 
-**Versão:** 1.0  
-**Última atualização:** 2024
+**Versão:** 1.1  
+**Última atualização:** 2026

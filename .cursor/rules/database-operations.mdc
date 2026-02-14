@@ -1,0 +1,22 @@
+---
+description: Regras ao modificar database/ - compatibilidade MongoDB/DynamoDB, normalização
+globs: database/**/*.py
+alwaysApply: false
+---
+
+# Regras para database/
+
+## Compatibilidade MongoDB e DynamoDB
+- Sempre verificar `self.db_type` antes de operações específicas de cada banco.
+- Usar abstrações de `db_connection`; não assumir apenas MongoDB.
+
+## Collections MongoDB
+- `publicadores`: CRUD de publicadores (nome, batizado, sexo, permissoes, Anciao, Servo_Ministerial, historico).
+- `reunioes`: Histórico de reuniões (ano, semana, participantes, etc.). Acessar via `self.db` quando for o database, ou via collection apropriada.
+
+## Múltiplos Publicadores
+- Formato "Nome1 / Nome2" para partes com dois participantes (ex.: escola).
+- Em `update_parte`, dividir por `/` e processar cada nome individualmente.
+
+## Normalização
+- Usar `util.ComandosUteis.TitleCase(nome)` antes de inserir, atualizar ou buscar por nome.

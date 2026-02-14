@@ -77,7 +77,7 @@ sequenceDiagram
     
     User->>UI: Clica "Criar Reunião"
     UI->>UI: Valida campos
-    UI->>S140: gerar_s140(url, nome, idioma, usarBase, qtdSemanas)
+    UI->>S140: gerar_s140(url, nome, idioma, usarBase, gerarComPublicadores, qtdSemanas)
     
     S140->>S140: buscarSoupDasSemnas()
     loop Para cada semana
@@ -95,7 +95,13 @@ sequenceDiagram
     S140->>S140: extrair_partes(listaSoupSemanas)
     Note over S140: Extrai: semana, tesouro, joias,<br/>leitura, escola, NVC, estudo
     
-    alt Usar base de publicadores
+    alt Usar base + Seleção Automática (gerarComPublicadores)
+        S140->>S140: selecionar_publicadores_automaticamente(salvar_imediatamente=False)
+        S140->>DB: selecionar_publicador_para_parte / selecionar_dois_publicadores_escola / selecionar_estudo_congregacao
+        S140->>S140: mostrar_resumo_e_editar_publicadores()
+        S140->>User: Modal de revisão e edição
+        User-->>S140: Confirma ou edita publicadores
+    else Usar base + Seleção Manual
         loop Para cada semana
             loop Para cada parte
                 S140->>Janelas: solicitar_nome_publicador(parte)
@@ -188,6 +194,14 @@ sequenceDiagram
 {
   "nome": "String (único, obrigatório)",
   "batizado": "Boolean (obrigatório)",
+  "sexo": "String - 'Masculino' ou 'Feminino' (padrão: 'Masculino')",
+  "Anciao": "Boolean (padrão: false)",
+  "Servo_Ministerial": "Boolean (padrão: false)",
+  "permissoes": {
+    "parte_escola": "Boolean - pode fazer partes da escola",
+    "oracao": "Boolean - pode fazer orações",
+    "leitura_livro": "Boolean - pode ler na reunião"
+  },
   "data_inclusao": "String ISO (obrigatório)",
   "ultima_parte": "String (opcional)",
   "historico": [
@@ -317,7 +331,7 @@ erDiagram
 
 ```python
 # Publicadores
-post(nome, batizado)                    # Criar publicador
+post(nome, batizado, sexo, permissoes)  # Criar publicador (sexo, permissoes opcionais)
 getAllPub()                             # Listar todos
 delete(nome)                            # Excluir
 update_parte(nome, parte, semana)       # Atualizar histórico
@@ -332,6 +346,22 @@ listar_reunioes(ano, semana, limite)   # Listar com filtros
 buscar_historico_publicador(nome)       # Histórico individual
 contar_reunioes_por_publicador()        # Estatísticas
 ```
+
+**Critérios por Parte (seleção automática):**
+
+| Parte | Critério |
+|-------|----------|
+| Presidente | Apenas Ancião |
+| Oração Inicial | Ancião OU Servo Ministerial OU permissão oração |
+| Tesouro, Joias Espirituais | Ancião OU Servo Ministerial |
+| Leitura da Bíblia | Masculino, permissão leitura, NÃO Ancião, NÃO SM |
+| Escola (1ª, 2ª, 4ª parte) | Permissão parte_escola, NÃO Ancião, NÃO SM — 2 pessoas mesmo sexo |
+| Escola (3ª parte - Discurso) | Masculino, permissão parte_escola, NÃO Ancião |
+| Escola (3ª parte - Estudo) | 2 pessoas mesmo sexo |
+| NVC (1ª e 2ª parte) | Apenas Ancião |
+| Estudo de Congregação | Ancião ou ajudante com permissão leitura |
+
+Ordenação: prioriza quem está há mais tempo sem fazer a parte (`calcular_tempo_sem_fazer`).
 
 **Detalhes de Implementação:**
 - Suporta MongoDB e DynamoDB via abstração
@@ -360,13 +390,20 @@ contar_reunioes_por_publicador()        # Estatísticas
 **Métodos Principais:**
 
 ```python
-gerar_s140(url, nome, idioma, preencherPubs, qntdSemanas)
-  ├─ buscarSoupDasSemnas()          # Busca HTML das semanas
-  ├─ extrair_partes()                # Extrai dados do HTML
-  ├─ solicitarNomePublicadorPartes() # Solicita publicadores (se habilitado)
-  ├─ criarDocumentoApartirDoObjeto() # Gera documento Word
-  └─ atualizarHistoricoPublicadores() # Atualiza banco (se habilitado)
+gerar_s140(url, nome, idioma, preencherPubs, gerarComPublicadores, qntdSemanas)
+  ├─ buscarSoupDasSemnas()                    # Busca HTML das semanas
+  ├─ extrair_partes()                          # Extrai dados do HTML
+  ├─ [Se automático] selecionar_publicadores_automaticamente(salvar_imediatamente=False)
+  ├─ [Se automático] mostrar_resumo_e_editar_publicadores()  # Modal de revisão
+  ├─ [Se manual] solicitarNomePublicadorPartes()
+  ├─ criarDocumentoApartirDoObjeto()
+  └─ [Se preencherPubs] atualizarHistoricoPublicadores()
 ```
+
+**Seleção Automática (db_operations):**
+- `selecionar_publicador_para_parte(parte, semana, ja_selecionados, selecionados_global)` — Uma pessoa por parte, critérios por tipo
+- `selecionar_dois_publicadores_escola(parte, semana, ...)` — Duas pessoas mesmo sexo (partes da escola)
+- `selecionar_estudo_congregacao(semana, ...)` — Ancião ou ajudante com permissão de leitura
 
 **Estrutura de Dados Extraída:**
 
@@ -747,9 +784,17 @@ reuniao = collection.find_one(filtro)
 - Web scraping falha: Verificar URL e estrutura HTML
 - Duplicações: Verificar lógica em `_atualizar_historico_publicadores()`
 
+## Mudanças Recentes
+
+- **Seleção automática de publicadores:** `gerarComPublicadores` ativa critérios por parte (Ancião, SM, permissões, sexo) e prioriza tempo sem fazer.
+- **Modal de revisão:** `mostrar_resumo_e_editar_publicadores` permite editar publicadores antes de gerar o documento.
+- **Campos de publicador:** `sexo`, `permissoes` (parte_escola, oracao, leitura_livro), `Anciao`, `Servo_Ministerial`.
+- **Partes da escola com 2 publicadores:** `selecionar_dois_publicadores_escola` garante mesmo sexo.
+- **Estudo de congregação:** `selecionar_estudo_congregacao` para Ancião ou ajudante com permissão.
+
 ---
 
-**Versão:** 1.0  
-**Última atualização:** 2024  
+**Versão:** 1.1  
+**Última atualização:** 2026  
 **Para uso por:** Assistentes de IA e desenvolvedores
 

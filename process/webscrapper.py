@@ -38,4 +38,60 @@ class webscrapper:
             else:
                 return None
         else:
-            return None    
+            return None
+
+    def extrair_titulos_sentinela_meetings(url, qtd_semanas=5):
+        """
+        Extrai os títulos do estudo da Sentinela da página de meetings.
+        Cada URL (ano/mês) retorna uma semana. Itera 5 vezes incrementando o mês:
+        ex: 2026/6 -> 2026/7 -> 2026/8 -> 2026/9 -> 2026/10
+        
+        Args:
+            url: URL da página de meetings (ex: https://wol.jw.org/pt/wol/meetings/r5/lp-t/2026/6)
+            qtd_semanas: Quantidade de semanas a extrair (padrão 5)
+            
+        Returns:
+            Lista de dicts com 'semana', 'titulo_estudo', 'tema_discurso', 'orador', 'leitor_sentinela'
+        """
+        resultados = []
+        partes = url.rstrip('/').split('/')
+        if len(partes) < 2:
+            return resultados
+        
+        try:
+            ano = int(partes[-2])
+            num_inicial = int(partes[-1])
+        except (ValueError, IndexError):
+            return resultados
+        
+        base_url = '/'.join(partes[:-2])
+        
+        for i in range(qtd_semanas):
+            num_semana = num_inicial + i
+            url_semana = f"{base_url}/{ano}/{num_semana}"
+            soup = webscrapper.executar(url_semana)
+            if not soup:
+                continue
+            
+            cards = soup.find_all('a', class_='cardLine1Prominent')
+            titulo = ""
+            
+            for card in cards:
+                card_line2 = card.find('div', class_='cardLine2')
+                if not card_line2 or 'Sentinela (Estudo)' not in card_line2.get_text():
+                    continue
+                card_line1 = card.find('div', class_='cardLine1')
+                titulo = card_line1.get_text().strip() if card_line1 else ""
+                break
+            
+            if titulo:
+                semana_num = len(resultados) + 1
+                resultados.append({
+                    'semana': f'Semana {semana_num}',
+                    'titulo_estudo': titulo,
+                    'tema_discurso': '',
+                    'orador': '',
+                    'leitor_sentinela': ''
+                })
+        
+        return resultados

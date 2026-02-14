@@ -18,9 +18,12 @@ class DatabaseOperations:
                 # Criar índice composto para ano e semana
                 collection_reunioes = self.db['reunioes']
                 collection_reunioes.create_index([("ano", 1), ("semana", 1)], unique=True)
-                logger.info("Índice criado/verificado com sucesso para ano e semana")
+                # Índice para reunioes_final_semana
+                collection_fs = self.db['reunioes_final_semana']
+                collection_fs.create_index([("ano", 1), ("mes", 1)], unique=True)
+                logger.info("Índices criados/verificados com sucesso")
             except Exception as e:
-                logger.error(f"Erro ao criar índice: {str(e)}")
+                logger.error(f"Erro ao criar índices: {str(e)}")
 
     def post(self, nome, batizado, sexo="Masculino", permissoes=None):
         """
@@ -42,8 +45,15 @@ class DatabaseOperations:
                 permissoes = {
                     "parte_escola": True,
                     "oracao": True,
-                    "leitura_livro": True
+                    "leitura_livro": True,
+                    "leitura_sentinela": False,
+                    "presidente_final_semana": False
                 }
+            # Garantir que permissoes de final de semana existem em permissoes existentes
+            if "leitura_sentinela" not in permissoes:
+                permissoes["leitura_sentinela"] = False
+            if "presidente_final_semana" not in permissoes:
+                permissoes["presidente_final_semana"] = False
             
             item = {
                 "nome": nome.strip(),
@@ -1172,6 +1182,7 @@ class DatabaseOperations:
             parte (str, optional): Nome da parte para filtrar. 
                 Se None, conta todas as participações.
                 Se "__EXCLUIR_ORACOES__", conta todas exceto orações (Oração Inicial e Oração Final).
+                Se "__EXCLUIR_FINAL_SEMANA__", conta todas exceto Leitura Sentinela (partes de Final de Semana).
             
         Returns:
             dict: Dicionário com {nome_publicador: quantidade} ordenado por quantidade (decrescente)
@@ -1225,6 +1236,11 @@ class DatabaseOperations:
                         # Excluir orações: contar todas as participações exceto orações
                         participacoes_parte = [h for h in historico if h.get('parte') not in partes_oracao]
                         quantidade = len(participacoes_parte)
+                    elif parte == "__EXCLUIR_FINAL_SEMANA__":
+                        # Excluir Final de Semana: contar todas exceto Leitura Sentinela e Presidente Final Semana
+                        partes_final_semana = ["Leitura Sentinela", "Presidente Final Semana"]
+                        participacoes_parte = [h for h in historico if h.get('parte') not in partes_final_semana]
+                        quantidade = len(participacoes_parte)
                     else:
                         # Filtrar apenas as participações da parte especificada
                         participacoes_parte = [h for h in historico if h.get('parte') == parte]
@@ -1244,6 +1260,8 @@ class DatabaseOperations:
             if parte:
                 if parte == "__EXCLUIR_ORACOES__":
                     logger.info(f"Filtro aplicado: Todas as Partes Menos Oração")
+                elif parte == "__EXCLUIR_FINAL_SEMANA__":
+                    logger.info(f"Filtro aplicado: Todas as Partes Menos Final de Semana")
                 else:
                     logger.info(f"Filtro aplicado: {parte}")
             
@@ -1619,6 +1637,276 @@ class DatabaseOperations:
             import traceback
             traceback.print_exc()
             return "não possui"
+
+    def selecionar_publicador_leitura_sentinela(self, semana, publicadores_ja_selecionados=None):
+        """
+        Seleciona automaticamente um publicador para Leitura da Sentinela.
+        Critério: permissoes.leitura_sentinela = True. Prioriza quem está há mais tempo sem fazer.
+        """
+        try:
+            if publicadores_ja_selecionados is None:
+                publicadores_ja_selecionados = []
+            
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "permissoes": 1, "_id": 0}))
+            else:
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            publicadores_filtrados = [
+                p for p in publicadores
+                if p.get("permissoes", {}).get("leitura_sentinela", False)
+            ]
+            
+            if not publicadores_filtrados:
+                logger.warning("Nenhum publicador com permissão de leitura da Sentinela")
+                return ""
+            
+            publicadores_candidatos = [
+                p for p in publicadores_filtrados
+                if p.get('nome') not in publicadores_ja_selecionados
+            ]
+            if not publicadores_candidatos:
+                publicadores_candidatos = publicadores_filtrados
+            
+            publicadores_com_tempo = []
+            for pub in publicadores_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), "Leitura Sentinela")
+                publicadores_com_tempo.append((pub, tempo))
+            
+            publicadores_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            return publicadores_com_tempo[0][0].get('nome', '')
+        except Exception as e:
+            logger.error(f"Erro ao selecionar publicador para Leitura Sentinela: {str(e)}")
+            return ""
+
+    def selecionar_publicador_presidente_final_semana(self, semana, publicadores_ja_selecionados=None):
+        """
+        Seleciona automaticamente um publicador para Presidente da reunião de Final de Semana.
+        Critério: permissoes.presidente_final_semana = True. Prioriza quem está há mais tempo sem fazer.
+        """
+        try:
+            if publicadores_ja_selecionados is None:
+                publicadores_ja_selecionados = []
+            
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "permissoes": 1, "_id": 0}))
+            else:
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            publicadores_filtrados = [
+                p for p in publicadores
+                if p.get("permissoes", {}).get("presidente_final_semana", False)
+            ]
+            
+            if not publicadores_filtrados:
+                logger.warning("Nenhum publicador com permissão de Presidente Final de Semana")
+                return ""
+            
+            publicadores_candidatos = [
+                p for p in publicadores_filtrados
+                if p.get('nome') not in publicadores_ja_selecionados
+            ]
+            if not publicadores_candidatos:
+                publicadores_candidatos = publicadores_filtrados
+            
+            publicadores_com_tempo = []
+            for pub in publicadores_candidatos:
+                tempo = self.calcular_tempo_sem_fazer(pub.get('nome'), "Presidente Final Semana")
+                publicadores_com_tempo.append((pub, tempo))
+            
+            publicadores_com_tempo.sort(key=lambda x: x[1], reverse=True)
+            return publicadores_com_tempo[0][0].get('nome', '')
+        except Exception as e:
+            logger.error(f"Erro ao selecionar publicador para Presidente Final Semana: {str(e)}")
+            return ""
+
+    def listar_publicadores_por_permissao(self, permissao):
+        """
+        Retorna lista de nomes de publicadores que possuem a permissão informada.
+        Usado para autocomplete em campos de Presidente e Leitor Final de Semana.
+        """
+        try:
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({}, {"nome": 1, "permissoes": 1, "_id": 0}))
+            else:
+                response = self.db.scan()
+                publicadores = response.get('Items', [])
+            
+            nomes = [
+                p.get('nome', '') for p in publicadores
+                if p.get("permissoes", {}).get(permissao, False) and p.get('nome')
+            ]
+            return sorted(nomes)
+        except Exception as e:
+            logger.error(f"Erro ao listar publicadores por permissão {permissao}: {str(e)}")
+            return []
+
+    def contar_participacoes_parte(self, nome_publicador, parte):
+        """
+        Retorna quantas vezes o publicador fez determinada parte (conta no histórico).
+        Ex.: contar_participacoes_parte("João", "Leitura Sentinela") -> 3
+        """
+        try:
+            historico = self.buscar_historico_publicador(nome_publicador)
+            if not historico:
+                return 0
+            return len([h for h in historico if h.get('parte') == parte])
+        except Exception as e:
+            logger.error(f"Erro ao contar participações de {nome_publicador} na parte {parte}: {str(e)}")
+            return 0
+
+    def listar_ordenados_por_menos_partecipacoes(self, permissao, nome_parte_historico):
+        """
+        Lista publicadores com a permissão informada, ordenados do que fez MENOS
+        participações na parte (nome_parte_historico) ao que fez mais.
+        Usado para distribuir Leitor Sentinela e Presidente Final de Semana (um por semana).
+        """
+        try:
+            nomes = self.listar_publicadores_por_permissao(permissao)
+            if not nomes:
+                return []
+            com_contagem = [(nome, self.contar_participacoes_parte(nome, nome_parte_historico)) for nome in nomes]
+            com_contagem.sort(key=lambda x: x[1])
+            return [nome for nome, _ in com_contagem]
+        except Exception as e:
+            logger.error(f"Erro ao listar ordenados por menos participações: {str(e)}")
+            return []
+
+    def listar_ancios(self):
+        """
+        Retorna lista de nomes de publicadores que são anciãos (Anciao == True).
+        Usado para o modal de Dirigente de Sentinela.
+        """
+        try:
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find({"Anciao": True}, {"nome": 1, "_id": 0}))
+            else:
+                response = self.db.scan()
+                publicadores = [p for p in response.get('Items', []) if p.get("Anciao", False)]
+            nomes = [p.get('nome', '') for p in publicadores if p.get('nome')]
+            return sorted(nomes)
+        except Exception as e:
+            logger.error(f"Erro ao listar anciãos: {str(e)}")
+            return []
+
+    def listar_ancios_e_servos(self):
+        """
+        Retorna lista de nomes de publicadores que são anciãos (Anciao == True)
+        ou servos ministeriais (Servo_Ministerial == True). Sem duplicatas.
+        Usado para candidatos a Presidente Final de Semana e autocomplete do campo Presidente.
+        """
+        try:
+            if self.db_type == 'mongodb':
+                publicadores = list(self.db.find(
+                    {"$or": [{"Anciao": True}, {"Servo_Ministerial": True}]},
+                    {"nome": 1, "_id": 0}
+                ))
+            else:
+                response = self.db.scan()
+                publicadores = [
+                    p for p in response.get('Items', [])
+                    if p.get("Anciao", False) or p.get("Servo_Ministerial", False)
+                ]
+            nomes = list({p.get('nome', '') for p in publicadores if p.get('nome')})
+            return sorted(nomes)
+        except Exception as e:
+            logger.error(f"Erro ao listar anciãos e servos: {str(e)}")
+            return []
+
+    def listar_presidentes_final_semana_ordenados_por_menos_partecipacoes(self):
+        """
+        Lista anciãos e servos ministeriais ordenados do que fez MENOS
+        participações em 'Presidente Final Semana' ao que fez mais.
+        Usado para seleção automática de presidente (um por semana, com ciclo).
+        """
+        try:
+            nomes = self.listar_ancios_e_servos()
+            if not nomes:
+                return []
+            com_contagem = [
+                (nome, self.contar_participacoes_parte(nome, "Presidente Final Semana"))
+                for nome in nomes
+            ]
+            com_contagem.sort(key=lambda x: x[1])
+            return [nome for nome, _ in com_contagem]
+        except Exception as e:
+            logger.error(f"Erro ao listar presidentes final semana ordenados: {str(e)}")
+            return []
+
+    def salvar_reuniao_final_semana(self, dados):
+        """Salva ou atualiza uma reunião de final de semana em reunioes_final_semana."""
+        try:
+            if self.db_type != 'mongodb':
+                return {"success": False, "message": "Reunião final de semana suportada apenas em MongoDB"}
+            
+            collection = self.db['reunioes_final_semana']
+            ano = dados.get('ano')
+            mes = dados.get('mes')
+            filtro = {"ano": ano, "mes": mes}
+            
+            dados_doc = {
+                **dados,
+                "ultima_atualizacao": datetime.datetime.now().isoformat()
+            }
+            
+            collection.update_one(filtro, {"$set": dados_doc}, upsert=True)
+            
+            meses_pt = {
+                1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+                5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+                9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+            }
+            nome_mes = meses_pt.get(mes, str(mes))
+            for i, semana in enumerate(dados.get('semanas', [])):
+                data_part = f"Semana {i + 1} de {nome_mes} de {ano}"
+                presidente = semana.get('presidente', '')
+                if presidente:
+                    self._atualizar_historico_individual(presidente, "Presidente Final Semana", data_part)
+                leitor = semana.get('leitor_sentinela', '')
+                if leitor:
+                    self._atualizar_historico_individual(leitor, "Leitura Sentinela", data_part)
+            
+            return {"success": True, "message": "Reunião salva"}
+        except Exception as e:
+            logger.error(f"Erro ao salvar reunião final de semana: {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def listar_reunioes_final_semana(self, ano=None, mes=None, limite=50):
+        """Lista reuniões de final de semana com filtros opcionais."""
+        try:
+            if self.db_type != 'mongodb':
+                return []
+            
+            collection = self.db['reunioes_final_semana']
+            query = {}
+            if ano is not None:
+                query["ano"] = ano
+            if mes is not None:
+                query["mes"] = mes
+            
+            reunioes = list(collection.find(query).sort("data_criacao", -1).limit(limite))
+            for r in reunioes:
+                r.pop('_id', None)
+            return reunioes
+        except Exception as e:
+            logger.error(f"Erro ao listar reuniões final de semana: {str(e)}")
+            return []
+
+    def buscar_reuniao_final_semana(self, ano, mes):
+        """Busca uma reunião de final de semana por ano e mês."""
+        try:
+            if self.db_type != 'mongodb':
+                return None
+            collection = self.db['reunioes_final_semana']
+            doc = collection.find_one({"ano": ano, "mes": mes})
+            if doc:
+                doc.pop('_id', None)
+            return doc
+        except Exception as e:
+            logger.error(f"Erro ao buscar reunião final de semana: {str(e)}")
+            return None
 
 # Criar uma instância global das operações
 db_ops = DatabaseOperations() 

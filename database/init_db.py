@@ -48,6 +48,11 @@ def init_mongodb():
         collection_reunioes.create_index([("data_reuniao", 1)])
         collection_reunioes.create_index([("ultima_atualizacao", 1)])
         
+        # Coleção de reuniões de final de semana
+        collection_final_semana = db['reunioes_final_semana']
+        collection_final_semana.create_index([("ano", 1), ("mes", 1)], unique=True)
+        collection_final_semana.create_index([("data_criacao", 1)])
+        
         logger.info("Índices do MongoDB criados com sucesso")
         return True
         

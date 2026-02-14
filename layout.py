@@ -5,9 +5,10 @@ import tkinter as tk
 import webbrowser
 import time
 import process.s140 as s140
+import process.final_semana as final_semana
 from PIL import Image, ImageTk
 import os
-from database import post, getAllPub, delete
+from database import post, getAllPub, delete, listar_reunioes_final_semana, buscar_reuniao_final_semana
 from database.db_operations import DatabaseOperations
 import util.janelas as janelas
 from util.startup_manager import initialize_application
@@ -53,30 +54,30 @@ class ModernApp:
         self.cards_frame.pack(fill=BOTH, expand=YES)
         
         # Criação dos cards
+        # Linha 0: Criar reuniões
         self.create_card(
-            "Criar Reunião",
+            "Criar Reunião de Meio de Semana",
             "Gere documentos para reuniões de meio de semana",
             "primary",
             self.criar_quadro_de_anuncio,
             0, 0
         )
+        self.create_card(
+            "Criar Reunião Final de Semana",
+            "Gere documentos para reuniões de final de semana",
+            "primary",
+            self.criar_reuniao_final_semana,
+            0, 1
+        )
         
+        # Linha 1: Publicadores
         self.create_card(
             "Publicadores",
             "Gerencie a lista de publicadores",
             "info",
             self.publicadores,
-            0, 1
-        )
-        
-        self.create_card(
-            "Histórico",
-            "Visualize o histórico de reuniões",
-            "warning",
-            self.historico,
             1, 0
         )
-        
         self.create_card(
             "Histórico de Publicadores",
             "Visualize o histórico de partes dos publicadores",
@@ -85,12 +86,30 @@ class ModernApp:
             1, 1
         )
         
+        # Linha 2: Históricos de reuniões
+        self.create_card(
+            "Histórico Reunião Meio de Semana",
+            "Visualize o histórico de reuniões de meio de semana",
+            "warning",
+            self.historico,
+            2, 0
+        )
+        self.create_card(
+            "Histórico Reunião Final de Semana",
+            "Visualize o histórico de reuniões de final de semana",
+            "secondary",
+            self.historico_final_semana,
+            2, 1
+        )
+        
+        # Linha 3: Dashboard (colspan 2)
         self.create_card(
             "Dashboards",
             "Visualize estatísticas e gráficos",
             "danger",
             self.dashboards,
-            2, 0
+            3, 0,
+            columnspan=2
         )
         
         # Rodapé
@@ -104,7 +123,7 @@ class ModernApp:
         )
         version_label.pack(side=RIGHT)
 
-    def create_card(self, title, description, style, command, row, col):
+    def create_card(self, title, description, style, command, row, col, columnspan=1):
         """Cria um card estilizado com título, descrição e botão"""
         # Card principal com preenchimento maior e bordas arredondadas
         card = ttk.Frame(
@@ -112,10 +131,11 @@ class ModernApp:
             bootstyle="light",  # Alterado para light (branco)
             padding=20
         )
-        card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+        card.grid(row=row, column=col, columnspan=columnspan, padx=10, pady=10, sticky="nsew")
         
         # Configurar o grid para expandir igualmente
-        self.cards_frame.grid_columnconfigure(col, weight=1)
+        for c in range(col, col + columnspan):
+            self.cards_frame.grid_columnconfigure(c, weight=1)
         self.cards_frame.grid_rowconfigure(row, weight=1)
         
         # Container para conteúdo do card com estilo
@@ -152,25 +172,31 @@ class ModernApp:
         )
         button_frame.pack(side=BOTTOM, fill=X, pady=(10, 0))
         
-        # Botão com estilo outline e hover
-        access_button = ttk.Button(
+        # Botão com texto visível (tk.Button com fonte explícita; ttk pode não mostrar texto no Windows)
+        _cores = {
+            "primary": ("#0d6efd", "white"),
+            "info": ("#0dcaf0", "black"),
+            "success": ("#198754", "white"),
+            "warning": ("#ffc107", "black"),
+            "secondary": ("#6c757d", "white"),
+            "danger": ("#dc3545", "white"),
+        }
+        bg, fg = _cores.get(style, ("#0d6efd", "white"))
+        access_button = tk.Button(
             button_frame,
             text="ACESSAR",
-            bootstyle=f"{style}-outline",
+            font=("Segoe UI", 11, "bold"),
+            fg=fg,
+            bg=bg,
+            activeforeground=fg,
+            activebackground=bg,
+            relief="flat",
+            cursor="hand2",
             command=command,
-            padding=(20, 15)
+            padx=30,
+            pady=12
         )
-        access_button.pack(anchor=CENTER)
-        
-        # Configurar o hover do botão
-        def on_enter(e):
-            access_button.configure(bootstyle=style)
-        
-        def on_leave(e):
-            access_button.configure(bootstyle=f"{style}-outline")
-        
-        access_button.bind("<Enter>", on_enter)
-        access_button.bind("<Leave>", on_leave)
+        access_button.pack(anchor=CENTER, fill=X, padx=20)
 
     def publicadores(self):
         # Criar janela de publicadores
@@ -318,6 +344,8 @@ class ModernApp:
             permissao_escola_var = ttk.BooleanVar(value=True)
             permissao_oracao_var = ttk.BooleanVar(value=True)
             permissao_leitura_var = ttk.BooleanVar(value=True)
+            permissao_leitura_sentinela_var = ttk.BooleanVar(value=False)
+            permissao_presidente_final_semana_var = ttk.BooleanVar(value=False)
             
             # Checkboxes de permissões
             ttk.Checkbutton(
@@ -339,6 +367,20 @@ class ModernApp:
                 text="Leitura do Livro",
                 variable=permissao_leitura_var,
                 bootstyle="primary-round-toggle"
+            ).pack(side=LEFT, padx=(0, 15))
+            
+            ttk.Checkbutton(
+                permissoes_frame,
+                text="Leitura da Sentinela",
+                variable=permissao_leitura_sentinela_var,
+                bootstyle="primary-round-toggle"
+            ).pack(side=LEFT, padx=(0, 15))
+            
+            ttk.Checkbutton(
+                permissoes_frame,
+                text="Presidente Final de Semana",
+                variable=permissao_presidente_final_semana_var,
+                bootstyle="primary-round-toggle"
             ).pack(side=LEFT)
             
             # Frame do botão
@@ -352,7 +394,9 @@ class ModernApp:
                 permissoes = {
                     "parte_escola": permissao_escola_var.get(),
                     "oracao": permissao_oracao_var.get(),
-                    "leitura_livro": permissao_leitura_var.get()
+                    "leitura_livro": permissao_leitura_var.get(),
+                    "leitura_sentinela": permissao_leitura_sentinela_var.get(),
+                    "presidente_final_semana": permissao_presidente_final_semana_var.get()
                 }
                 if nome.strip():
                     from database import db_ops
@@ -624,13 +668,17 @@ class ModernApp:
                     permissoes_publicador = publicador.get("permissoes", {
                         "parte_escola": True,
                         "oracao": True,
-                        "leitura_livro": True
+                        "leitura_livro": True,
+                        "leitura_sentinela": False,
+                        "presidente_final_semana": False
                     })
                     
                     # Variáveis para permissões
                     permissao_escola_var = ttk.BooleanVar(value=permissoes_publicador.get("parte_escola", True))
                     permissao_oracao_var = ttk.BooleanVar(value=permissoes_publicador.get("oracao", True))
                     permissao_leitura_var = ttk.BooleanVar(value=permissoes_publicador.get("leitura_livro", True))
+                    permissao_leitura_sentinela_var = ttk.BooleanVar(value=permissoes_publicador.get("leitura_sentinela", False))
+                    permissao_presidente_final_semana_var = ttk.BooleanVar(value=permissoes_publicador.get("presidente_final_semana", False))
                     
                     # Checkboxes de permissões
                     ttk.Checkbutton(
@@ -651,6 +699,20 @@ class ModernApp:
                         permissoes_frame,
                         text="Leitura do Livro",
                         variable=permissao_leitura_var,
+                        bootstyle="primary-round-toggle"
+                    ).pack(side=LEFT, padx=(0, 15))
+                    
+                    ttk.Checkbutton(
+                        permissoes_frame,
+                        text="Leitura da Sentinela",
+                        variable=permissao_leitura_sentinela_var,
+                        bootstyle="primary-round-toggle"
+                    ).pack(side=LEFT, padx=(0, 15))
+                    
+                    ttk.Checkbutton(
+                        permissoes_frame,
+                        text="Presidente Final de Semana",
+                        variable=permissao_presidente_final_semana_var,
                         bootstyle="primary-round-toggle"
                     ).pack(side=LEFT)
                     
@@ -683,7 +745,9 @@ class ModernApp:
                         permissoes = {
                             "parte_escola": permissao_escola_var.get(),
                             "oracao": permissao_oracao_var.get(),
-                            "leitura_livro": permissao_leitura_var.get()
+                            "leitura_livro": permissao_leitura_var.get(),
+                            "leitura_sentinela": permissao_leitura_sentinela_var.get(),
+                            "presidente_final_semana": permissao_presidente_final_semana_var.get()
                         }
                         
                         if novo_nome.strip():
@@ -2029,6 +2093,234 @@ class ModernApp:
         y = (quadro_de_anuncio.winfo_screenheight() // 2) - (height // 2)
         quadro_de_anuncio.geometry(f"{width}x{height}+{x}+{y}")
 
+    def criar_reuniao_final_semana(self):
+        """Janela para criar reunião de final de semana."""
+        janela = ttk.Toplevel(self.root)
+        janela.title("Criar Reunião Final de Semana")
+        
+        main_container = ttk.Frame(janela, padding=20)
+        main_container.pack(fill=BOTH, expand=YES)
+        
+        ttk.Label(main_container, text="Criar Reunião Final de Semana", font=("Helvetica", 20, "bold"), bootstyle="primary").pack(pady=(0, 20))
+        
+        fields = ttk.Frame(main_container)
+        fields.pack(fill=BOTH, expand=YES, pady=(0, 20))
+        fields.grid_columnconfigure(1, weight=1)
+        
+        ttk.Label(fields, text="URL:", font=("Helvetica", 12), bootstyle="secondary").grid(row=0, column=0, padx=(0, 10), pady=10, sticky="w")
+        entry_url = ttk.Entry(fields, width=50, bootstyle="primary")
+        entry_url.grid(row=0, column=1, sticky="ew", pady=10)
+        entry_url.insert(0, "https://wol.jw.org/pt/wol/meetings/r5/lp-t/2026/6")
+        
+        ttk.Label(fields, text="Nome do Arquivo:", font=("Helvetica", 12), bootstyle="secondary").grid(row=1, column=0, padx=(0, 10), pady=10, sticky="w")
+        entry_nome = ttk.Entry(fields, width=50, bootstyle="primary")
+        entry_nome.grid(row=1, column=1, sticky="ew", pady=10)
+        
+        ttk.Label(fields, text="Idioma:", font=("Helvetica", 12), bootstyle="secondary").grid(row=2, column=0, padx=(0, 10), pady=10, sticky="w")
+        idioma_var = ttk.StringVar(value="pt")
+        ttk.Combobox(fields, textvariable=idioma_var, values=["pt"], state="readonly", width=10, bootstyle="primary").grid(row=2, column=1, sticky="w", pady=10)
+        
+        auto_presidente_var = ttk.BooleanVar()
+        auto_leitor_var = ttk.BooleanVar()
+        ttk.Checkbutton(fields, text="Seleção automática do Presidente", variable=auto_presidente_var, bootstyle="primary-round-toggle").grid(row=3, column=0, columnspan=2, pady=5, sticky="w")
+        ttk.Checkbutton(fields, text="Seleção automática do Leitor da Sentinela", variable=auto_leitor_var, bootstyle="primary-round-toggle").grid(row=4, column=0, columnspan=2, pady=5, sticky="w")
+        
+        loading_frame = ttk.Frame(main_container)
+        loading_label = ttk.Label(loading_frame, text="Gerando documento...", font=("Helvetica", 14, "bold"), bootstyle="info")
+        loading_progress = ttk.Progressbar(loading_frame, mode='indeterminate', bootstyle="info-striped", length=400)
+        
+        def processar():
+            def cleanup():
+                loading_progress.stop()
+                loading_label.pack_forget()
+                loading_progress.pack_forget()
+                loading_frame.pack_forget()
+                gerar_btn.configure(state="normal")
+
+            def continuar_na_main_thread(semanas):
+                """Executa modal dirigente, modal dados, geração dos dois docs e salvamento na thread principal."""
+                try:
+                    dirigente = final_semana.FinalSemana.solicitar_dirigente_sentinela(janela)
+                    if dirigente is None:
+                        cleanup()
+                        return
+                    if not final_semana.FinalSemana.solicitar_dados_usuario(semanas, parent=janela):
+                        cleanup()
+                        return
+                    nome_base = entry_nome.get().strip()
+                    final_semana.FinalSemana.criar_documento_sentinela(semanas, nome_base, dirigente)
+                    final_semana.FinalSemana.criar_documento_oradores(semanas, nome_base)
+                    final_semana.FinalSemana.salvar_historico_final_semana(semanas, nome_base, dirigente)
+                    Messagebox.show_info("Documentos gerados com sucesso!", "Sucesso")
+                except Exception as e:
+                    Messagebox.show_error(f"Erro:\n{str(e)}", "Erro")
+                    logger.error(f"Erro ao gerar final de semana: {str(e)}")
+                finally:
+                    cleanup()
+
+            try:
+                # Fase 1 (thread): scraping e seleção - sem GUI (9 semanas)
+                semanas = final_semana.FinalSemana.buscar_titulos_meetings(entry_url.get().strip(), 9)
+                if not semanas:
+                    raise ValueError("Não foi possível extrair os títulos da Sentinela. Verifique a URL.")
+                if auto_presidente_var.get():
+                    final_semana.FinalSemana.selecionar_presidente_automaticamente(semanas)
+                if auto_leitor_var.get():
+                    final_semana.FinalSemana.selecionar_leitor_automaticamente(semanas)
+                # Fase 2 (main thread): modal + gerar doc - GUI obrigatória na main thread.
+                # Capturar semanas por argumento default para o callback receber exatamente a lista preenchida.
+                janela.after(0, lambda s=semanas: continuar_na_main_thread(s))
+            except Exception as e:
+                janela.after(0, lambda: Messagebox.show_error(f"Erro:\n{str(e)}", "Erro"))
+                logger.error(f"Erro ao gerar final de semana: {str(e)}")
+                janela.after(0, cleanup)
+        
+        def enviar():
+            if not entry_url.get().strip():
+                Messagebox.show_warning("Preencha a URL.", "Campo Obrigatório")
+                return
+            if not entry_nome.get().strip():
+                Messagebox.show_warning("Preencha o nome do arquivo.", "Campo Obrigatório")
+                return
+            gerar_btn.configure(state="disabled")
+            loading_label.pack(pady=(15, 10))
+            loading_progress.pack(pady=(0, 15))
+            loading_frame.pack(fill=X, pady=(20, 0))
+            loading_progress.start(10)
+            janela.update_idletasks()
+            threading.Thread(target=processar, daemon=True).start()
+        
+        gerar_btn = ttk.Button(main_container, text="Gerar Reunião", bootstyle="success", padding=(20, 15), command=enviar)
+        gerar_btn.pack(pady=(20, 0))
+        
+        ttk.Button(main_container, text="Voltar", command=janela.destroy, bootstyle="secondary", width=15).pack(side=BOTTOM, pady=(20, 0))
+        
+        janela.update_idletasks()
+        w, h = 600, 400
+        x = (janela.winfo_screenwidth() // 2) - (w // 2)
+        y = (janela.winfo_screenheight() // 2) - (h // 2)
+        janela.geometry(f"{w}x{h}+{x}+{y}")
+
+    def historico_final_semana(self):
+        """Exibe histórico de reuniões de final de semana."""
+        hist_window = ttk.Toplevel(self.root)
+        hist_window.title("Histórico Final de Semana")
+        hist_window.geometry("900x600")
+        
+        main = ttk.Frame(hist_window, padding=20)
+        main.pack(fill=BOTH, expand=YES)
+        
+        ttk.Label(main, text="Histórico de Reuniões Final de Semana", font=("Helvetica", 20, "bold"), bootstyle="primary").pack(pady=(0, 20))
+        
+        filtro_frame = ttk.Frame(main)
+        filtro_frame.pack(fill=X, pady=(0, 10))
+        ttk.Label(filtro_frame, text="Ano:", bootstyle="secondary").pack(side=LEFT, padx=(0, 5))
+        ano_var = ttk.StringVar(value=str(datetime.datetime.now().year))
+        ano_combo = ttk.Combobox(filtro_frame, textvariable=ano_var, width=8, values=[str(y) for y in range(2020, 2031)])
+        ano_combo.pack(side=LEFT, padx=(0, 15))
+        ttk.Label(filtro_frame, text="Mês:", bootstyle="secondary").pack(side=LEFT, padx=(0, 5))
+        mes_var = ttk.StringVar(value="")
+        mes_combo = ttk.Combobox(filtro_frame, textvariable=mes_var, width=10, values=["", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"])
+        mes_combo.pack(side=LEFT, padx=(0, 10))
+        
+        tree_frame = ttk.Frame(main)
+        tree_frame.pack(fill=BOTH, expand=YES, pady=(10, 0))
+        columns = ("ano", "mes", "arquivo", "data")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=15)
+        tree.heading("ano", text="Ano")
+        tree.heading("mes", text="Mês")
+        tree.heading("arquivo", text="Arquivo")
+        tree.heading("data", text="Data Criação")
+        tree.column("ano", width=80)
+        tree.column("mes", width=80)
+        tree.column("arquivo", width=300)
+        tree.column("data", width=180)
+        tree.pack(side=LEFT, fill=BOTH, expand=YES)
+        scroll = ttk.Scrollbar(tree_frame, orient=VERTICAL, command=tree.yview)
+        scroll.pack(side=RIGHT, fill=Y)
+        tree.configure(yscrollcommand=scroll.set)
+        
+        def mostrar_detalhes_final_semana(item):
+            valores = tree.item(item)['values']
+            if len(valores) < 2:
+                return
+            try:
+                ano = int(valores[0])
+                mes = int(valores[1])
+            except (ValueError, TypeError):
+                return
+            reuniao = buscar_reuniao_final_semana(ano, mes)
+            detalhes_window = ttk.Toplevel(hist_window)
+            detalhes_window.title(f"Detalhes da Reunião - {valores[2]} ({ano}/{mes})")
+            detalhes_window.geometry("650x450")
+            det_main = ttk.Frame(detalhes_window, padding=20)
+            det_main.pack(fill=BOTH, expand=YES)
+            ttk.Label(det_main, text=f"Detalhes da Reunião - {valores[2]}", font=("Helvetica", 16, "bold"), bootstyle="primary").pack(pady=(0, 20))
+            det_frame = ttk.Frame(det_main)
+            det_frame.pack(fill=BOTH, expand=YES)
+            det_tree = ttk.Treeview(det_frame, columns=("parte", "participante"), show="headings", bootstyle="primary", height=15)
+            det_tree.heading("parte", text="Parte", anchor=CENTER)
+            det_tree.heading("participante", text="Participante", anchor=CENTER)
+            det_tree.column("parte", width=250, anchor=W)
+            det_tree.column("participante", width=300, anchor=W)
+            det_scroll = ttk.Scrollbar(det_frame, orient=VERTICAL, command=det_tree.yview, bootstyle="primary-round")
+            det_scroll.pack(side=RIGHT, fill=Y)
+            det_tree.configure(yscrollcommand=det_scroll.set)
+            det_tree.pack(fill=BOTH, expand=YES, padx=(0, 10))
+            if reuniao:
+                if reuniao.get('dirigente'):
+                    det_tree.insert("", END, values=("Dirigente de Sentinela", reuniao.get('dirigente')), tags=('evenrow',))
+                if reuniao.get('semanas'):
+                    for i, semana in enumerate(reuniao['semanas']):
+                        detalhes = [
+                            (f"Semana {i+1} - Título Estudo", semana.get('titulo_estudo', '')),
+                            (f"Semana {i+1} - Tema Discurso", semana.get('tema_discurso', '')),
+                            (f"Semana {i+1} - Orador", semana.get('orador', '')),
+                            (f"Semana {i+1} - Presidente", semana.get('presidente', '')),
+                            (f"Semana {i+1} - Leitor Sentinela", semana.get('leitor_sentinela', ''))
+                        ]
+                        for j, (parte, participante) in enumerate(detalhes):
+                            if participante:
+                                tag = 'evenrow' if (i * 5 + j) % 2 == 0 else 'oddrow'
+                                det_tree.insert("", END, values=(parte, participante), tags=(tag,))
+                    det_tree.tag_configure('evenrow', background='#f0f0f0')
+                    det_tree.tag_configure('oddrow', background='white')
+            if not reuniao or not reuniao.get('semanas'):
+                ttk.Label(det_main, text="Nenhum detalhe encontrado para esta reunião.", bootstyle="danger").pack(pady=20)
+            ttk.Button(det_main, text="Voltar", command=detalhes_window.destroy, bootstyle="secondary", width=15).pack(side=BOTTOM, pady=(20, 0))
+            detalhes_window.update_idletasks()
+            w, h = 650, 450
+            x = (detalhes_window.winfo_screenwidth() // 2) - (w // 2)
+            y = (detalhes_window.winfo_screenheight() // 2) - (h // 2)
+            detalhes_window.geometry(f"{w}x{h}+{x}+{y}")
+            detalhes_window.transient(hist_window)
+            detalhes_window.grab_set()
+        
+        def on_tree_click(event):
+            item = tree.identify_row(event.y)
+            if item:
+                mostrar_detalhes_final_semana(item)
+        
+        tree.bind("<ButtonRelease-1>", on_tree_click)
+        
+        def carregar():
+            for item in tree.get_children():
+                tree.delete(item)
+            ano = int(ano_var.get()) if ano_var.get().isdigit() else None
+            mes = int(mes_var.get()) if mes_var.get().isdigit() else None
+            reunioes = listar_reunioes_final_semana(ano=ano, mes=mes, limite=100)
+            for r in reunioes:
+                data_criacao = r.get("data_criacao", "")[:19].replace("T", " ") if r.get("data_criacao") else ""
+                tree.insert("", END, values=(r.get("ano", ""), r.get("mes", ""), r.get("nome_arquivo", ""), data_criacao))
+        
+        ttk.Button(main, text="Filtrar", command=carregar, bootstyle="primary").pack(pady=(10, 0))
+        carregar()
+        
+        hist_window.update_idletasks()
+        x = (hist_window.winfo_screenwidth() // 2) - (900 // 2)
+        y = (hist_window.winfo_screenheight() // 2) - (600 // 2)
+        hist_window.geometry(f"900x600+{x}+{y}")
+
     def historico_publicadores(self):
         # Configuração da janela
         historico_pub_window = ttk.Toplevel(self.root)
@@ -2344,6 +2636,7 @@ class ModernApp:
         partes_disponiveis = [
             "Todas as Partes",
             "Todas as Partes Menos Oração",
+            "Todas as Partes Menos Final de Semana",
             "Presidente",
             "Oração Inicial",
             "Tesouro",
@@ -2412,6 +2705,8 @@ class ModernApp:
                     parte_para_busca = None
                 elif parte_filtro == "Todas as Partes Menos Oração":
                     parte_para_busca = "__EXCLUIR_ORACOES__"
+                elif parte_filtro == "Todas as Partes Menos Final de Semana":
+                    parte_para_busca = "__EXCLUIR_FINAL_SEMANA__"
                 else:
                     parte_para_busca = parte_filtro
                 
@@ -2531,6 +2826,20 @@ if __name__ == "__main__":
         # Criar janela principal com tema
         root = ttk.Window(themename="litera")
         root.title("JW Mural")
+        
+        # Corrigir texto dos botões no Windows (evitar "só traço colorido" por fonte inválida)
+        try:
+            style = root.style
+            font_btn = ("Segoe UI", 10)
+            style.configure("TButton", font=font_btn)
+            for name in ("primary", "secondary", "success", "info", "warning", "danger"):
+                for suffix in ("", "-outline", "-link", "-round", "-round-toggle"):
+                    try:
+                        style.configure(f"{name}{suffix}.TButton", font=font_btn)
+                    except tk.TclError:
+                        pass
+        except Exception:
+            pass
         
         # Configurar geometria da janela principal
         window_width = 1024

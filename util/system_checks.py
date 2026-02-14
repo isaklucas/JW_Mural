@@ -35,7 +35,9 @@ class SystemChecks:
     def check_required_files() -> List[str]:
         """Verifica se todos os arquivos necessários existem"""
         required_files = [
-            'Template.docx',
+            'Templates/Template_PT.docx',
+            'Templates/template_final_semana_sentinela.docx',
+            'Templates/template_final_semana_oradores.docx',
             '.env'
         ]
         

@@ -19,7 +19,7 @@ if not exist ".env" (
     echo COLLECTION_NAME=reunioes >> .env
     echo DB_TYPE=mongodb >> .env
     echo MONGODB_DB_NAME=jw_mural >> .env
-    echo MONGODB_COLLECTION=reunioes >> .env
+    echo MONGODB_COLLECTION=publicadores >> .env
 )
 
 :: Iniciar o programa
