@@ -130,13 +130,16 @@ class DatabaseUtils:
 
                 collection = db[collection_name]
 
-                # Criar/atualizar índices
+                # Criar índices (não-fatal se já existir com nome diferente)
                 for index in structure['indexes']:
-                    collection.create_index(
-                        index['fields'],
-                        unique=index.get('unique', False),
-                        name=index.get('name')
-                    )
+                    try:
+                        collection.create_index(
+                            index['fields'],
+                            unique=index.get('unique', False),
+                            name=index.get('name')
+                        )
+                    except Exception as e:
+                        logger.warning(f"Índice ignorado para '{collection_name}': {e}")
 
             logger.info("Estrutura do MongoDB configurada com sucesso")
             return True
