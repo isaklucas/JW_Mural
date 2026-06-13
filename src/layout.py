@@ -3607,6 +3607,12 @@ if __name__ == "__main__":
         # Criar janela principal com tema
         root = ttk.Window(themename="litera")
         root.title("JW Mural")
+
+        # Capturar exceções de callbacks tkinter no log (console=False swallows them)
+        _main_logger = logging.getLogger(__name__)
+        def _tk_exception(exc, val, tb):
+            _main_logger.error("Exceção em callback tkinter", exc_info=(exc, val, tb))
+        root.report_callback_exception = _tk_exception
         
         # Corrigir texto dos botões no Windows (evitar "só traço colorido" por fonte inválida)
         try:
