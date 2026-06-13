@@ -30,24 +30,33 @@ if '--init-db' in sys.argv:
     _ok = init_mongodb()
     sys.exit(0 if _ok else 1)
 
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap.dialogs import Messagebox
-import tkinter as tk
-import webbrowser
-import time
-import process.s140 as s140
-import process.final_semana as final_semana
-from PIL import Image, ImageTk
-import os
-from database import post, getAllPub, delete, listar_reunioes_final_semana, buscar_reuniao_final_semana, excluir_reuniao_final_semana, db_ops
-from database.db_operations import DatabaseOperations
-import util.janelas as janelas
-from util.startup_manager import initialize_application
-import sys
-import logging
-import datetime
-import threading
+try:
+    import ttkbootstrap as ttk
+    from ttkbootstrap.constants import *
+    from ttkbootstrap.dialogs import Messagebox
+    import tkinter as tk
+    import webbrowser
+    import time
+    import process.s140 as s140
+    import process.final_semana as final_semana
+    from PIL import Image, ImageTk
+    from database import post, getAllPub, delete, listar_reunioes_final_semana, buscar_reuniao_final_semana, excluir_reuniao_final_semana, db_ops
+    from database.db_operations import DatabaseOperations
+    import util.janelas as janelas
+    from util.startup_manager import initialize_application
+    import datetime
+    import threading
+except Exception as _import_err:
+    logging.getLogger(__name__).critical(f"Falha ao importar módulos: {_import_err}", exc_info=True)
+    import tkinter as _tk
+    from tkinter import messagebox as _mb
+    _r = _tk.Tk()
+    _r.withdraw()
+    _mb.showerror(
+        "Erro Fatal",
+        f"Não foi possível iniciar o aplicativo.\n\n{_import_err}\n\nVerifique se o MongoDB está em execução e o arquivo .env está correto.\n\nLog: %APPDATA%\\JW Mural\\jw_mural.log"
+    )
+    sys.exit(1)
 
 logger = logging.getLogger(__name__)
 
