@@ -65,5 +65,17 @@ class DatabaseConnection:
             return self.collection
         return self.table
 
-# Criar uma instância global da conexão
-db_connection = DatabaseConnection() 
+# Criar instância global — não levantar exceção no import para não travar o app
+try:
+    db_connection = DatabaseConnection()
+except Exception as e:
+    logger.error(f"Falha crítica ao inicializar conexão com banco: {e}")
+
+    class _FailedConnection:
+        db_type = 'mongodb'
+        db = None
+        client = None
+        collection = None
+        def get_connection(self): return None
+
+    db_connection = _FailedConnection() 

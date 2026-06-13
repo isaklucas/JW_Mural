@@ -1,5 +1,29 @@
 import sys
+import os
+import logging
 from pathlib import Path
+
+# Logging ANTES de qualquer import para capturar erros de inicialização
+def _setup_logging():
+    if getattr(sys, 'frozen', False):
+        _log_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'JW Mural')
+    else:
+        _log_dir = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(_log_dir, exist_ok=True)
+    _log_file = os.path.join(_log_dir, 'jw_mural.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(_log_file, encoding='utf-8'),
+            logging.StreamHandler(),
+        ]
+    )
+    return _log_file
+
+_log_file = _setup_logging()
+logging.getLogger(__name__).info(f"Iniciando JW Mural — log em {_log_file}")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 if '--init-db' in sys.argv:
     from database.init_db import init_mongodb
@@ -3571,23 +3595,6 @@ class ModernApp:
 
 if __name__ == "__main__":
     try:
-        # Configurar logging — arquivo gravado em %APPDATA%\JW Mural\
-        import sys as _sys
-        if getattr(_sys, 'frozen', False):
-            _log_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'JW Mural')
-        else:
-            _log_dir = os.path.dirname(os.path.abspath(__file__))
-        os.makedirs(_log_dir, exist_ok=True)
-        _log_file = os.path.join(_log_dir, 'jw_mural.log')
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(_log_file, encoding='utf-8'),
-                logging.StreamHandler(),
-            ]
-        )
-        
         # Criar janela principal com tema
         root = ttk.Window(themename="litera")
         root.title("JW Mural")
