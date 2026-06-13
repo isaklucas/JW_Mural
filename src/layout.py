@@ -3571,10 +3571,17 @@ class ModernApp:
 
 if __name__ == "__main__":
     try:
-        # Configurar logging
+        # Configurar logging — arquivo para capturar logs no executável instalado
+        import sys as _sys
+        _log_dir = os.path.dirname(_sys.executable) if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+        _log_file = os.path.join(_log_dir, 'jw_mural.log')
         logging.basicConfig(
             level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(_log_file, encoding='utf-8'),
+                logging.StreamHandler(),
+            ]
         )
         
         # Criar janela principal com tema
