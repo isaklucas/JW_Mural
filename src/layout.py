@@ -3477,8 +3477,9 @@ class ModernApp:
         ).pack(side=BOTTOM, pady=(20, 0))
 
     def abrir_configuracoes(self):
+        import sys
         from pathlib import Path
-        from util.backup import restore_database
+        from util.backup import restore_database, _project_root
 
         dialog = ttk.Toplevel(self.root)
         dialog.title("Configurações")
@@ -3496,8 +3497,7 @@ class ModernApp:
 
         ttk.Label(restore_frame, text="Data do backup:").pack(anchor=W)
 
-        project_root = Path(__file__).resolve().parent.parent
-        backups_dir = project_root / "backups"
+        backups_dir = _project_root() / "backups"
         datas = sorted(
             [d.name for d in backups_dir.iterdir() if d.is_dir()],
             reverse=True

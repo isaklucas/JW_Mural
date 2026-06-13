@@ -1,9 +1,16 @@
 import json
 import logging
+import sys
 from pathlib import Path
 from datetime import date
 
 logger = logging.getLogger(__name__)
+
+
+def _project_root() -> Path:
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def backup_database() -> bool:
@@ -15,9 +22,7 @@ def backup_database() -> bool:
             logger.info("Backup ignorado: banco não é MongoDB")
             return True
 
-        # Raiz do projeto: backup.py → util/ → src/ → raiz
-        project_root = Path(__file__).resolve().parent.parent.parent
-        backup_dir = project_root / "backups" / str(date.today())
+        backup_dir = _project_root() / "backups" / str(date.today())
 
         if backup_dir.exists():
             logger.info(f"Backup de hoje já existe: {backup_dir}")
@@ -48,8 +53,7 @@ def restore_database(backup_date: str, collections: list) -> dict:
     try:
         from database.db_connection import db_connection
 
-        project_root = Path(__file__).resolve().parent.parent.parent
-        backup_dir = project_root / "backups" / backup_date
+        backup_dir = _project_root() / "backups" / backup_date
 
         db = db_connection.db
         results = {}
