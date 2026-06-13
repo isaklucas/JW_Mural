@@ -46,6 +46,17 @@ try:
     from util.startup_manager import initialize_application
     import datetime
     import threading
+
+    # Workaround: LabelFrame com padding= falha no Tcl/Tk do app frozen
+    # Strip padding silenciosamente para evitar _tkinter.TclError: unknown option "-padding"
+    if getattr(sys, 'frozen', False):
+        _OrigLF = ttk.LabelFrame
+        class _SafeLabelFrame(_OrigLF):
+            def __init__(self, master=None, **kw):
+                kw.pop('padding', None)
+                super().__init__(master, **kw)
+        ttk.LabelFrame = _SafeLabelFrame
+
 except Exception as _import_err:
     logging.getLogger(__name__).critical(f"Falha ao importar módulos: {_import_err}", exc_info=True)
     import tkinter as _tk
