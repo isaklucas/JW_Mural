@@ -3571,9 +3571,13 @@ class ModernApp:
 
 if __name__ == "__main__":
     try:
-        # Configurar logging — arquivo para capturar logs no executável instalado
+        # Configurar logging — arquivo gravado em %APPDATA%\JW Mural\
         import sys as _sys
-        _log_dir = os.path.dirname(_sys.executable) if getattr(_sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+        if getattr(_sys, 'frozen', False):
+            _log_dir = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'JW Mural')
+        else:
+            _log_dir = os.path.dirname(os.path.abspath(__file__))
+        os.makedirs(_log_dir, exist_ok=True)
         _log_file = os.path.join(_log_dir, 'jw_mural.log')
         logging.basicConfig(
             level=logging.INFO,
