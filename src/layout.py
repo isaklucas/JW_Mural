@@ -2833,34 +2833,31 @@ class ModernApp:
                      values=list(mapa_fds.keys()), width=12, state="readonly",
                      bootstyle="primary").grid(row=0, column=3, padx=(0, 20), pady=5, sticky=W)
 
-        ttk.Label(cfg, text="Meses:").grid(row=0, column=4, padx=(0, 5), pady=5, sticky=W)
-        meses_var = ttk.IntVar(value=3)
-        ttk.Spinbox(cfg, textvariable=meses_var, from_=1, to=12, width=5,
-                    bootstyle="primary").grid(row=0, column=5, padx=(0, 20), pady=5, sticky=W)
-
         ttk.Button(cfg, text="Gerar Automaticamente", bootstyle="success",
-                   command=lambda: gerar_auto()).grid(row=0, column=6, padx=5, pady=5)
+                   command=lambda: gerar_auto()).grid(row=0, column=4, padx=5, pady=5)
         ttk.Button(cfg, text="Carregar Dados Salvos", bootstyle="info",
-                   command=lambda: carregar_salvos()).grid(row=0, column=7, padx=5, pady=5)
+                   command=lambda: carregar_salvos()).grid(row=0, column=5, padx=5, pady=5)
 
         # ── Tabela ────────────────────────────────────────────────────────
         tabela_frame = ttk.Frame(main)
         tabela_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
 
         cols = ("data", "tipo", "audio", "video", "microfone", "indicadores")
-        tabela = ttk.Treeview(tabela_frame, columns=cols, show="headings",
+        tabela = ttk.Treeview(tabela_frame, columns=cols, show="tree headings",
                               bootstyle="primary", height=18,
                               displaycolumns=("data", "audio", "video", "microfone", "indicadores"))
+        tabela.heading("#0",          text="Mês")
         tabela.heading("data",        text="Data")
         tabela.heading("audio",       text="Áudio")
         tabela.heading("video",       text="Vídeo")
         tabela.heading("microfone",   text="Microfone")
         tabela.heading("indicadores", text="Indicadores")
-        tabela.column("data",        width=90,  anchor=CENTER)
-        tabela.column("audio",       width=160, anchor=W)
-        tabela.column("video",       width=160, anchor=W)
-        tabela.column("microfone",   width=220, anchor=W)
-        tabela.column("indicadores", width=220, anchor=W)
+        tabela.column("#0",          width=140, anchor=W)
+        tabela.column("data",        width=80,  anchor=CENTER)
+        tabela.column("audio",       width=150, anchor=W)
+        tabela.column("video",       width=150, anchor=W)
+        tabela.column("microfone",   width=210, anchor=W)
+        tabela.column("indicadores", width=210, anchor=W)
 
         sb_v = ttk.Scrollbar(tabela_frame, orient="vertical",
                              command=tabela.yview, bootstyle="primary-round")
@@ -2887,14 +2884,31 @@ class ModernApp:
 
         # ── Callbacks ─────────────────────────────────────────────────────
         def _popula_tabela(designacoes):
+            import datetime as _dt
+            from collections import defaultdict
             for row in tabela.get_children():
                 tabela.delete(row)
+            MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",
+                        6:"Junho",7:"Julho",8:"Agosto",9:"Setembro",
+                        10:"Outubro",11:"Novembro",12:"Dezembro"}
+            por_mes = defaultdict(list)
             for d in designacoes:
-                tabela.insert("", "end", values=(
-                    d["data"], d.get("tipo", ""),
-                    d.get("audio", ""), d.get("video", ""),
-                    d.get("microfone", ""), d.get("indicadores", "")
-                ))
+                try:
+                    dt = _dt.datetime.strptime(d["data"], "%d/%m/%Y")
+                    por_mes[(dt.year, dt.month)].append(d)
+                except ValueError:
+                    por_mes[(0, 0)].append(d)
+            for (ano, mes) in sorted(por_mes.keys()):
+                mes_label = f"{MESES_PT.get(mes, str(mes))} {ano}" if mes else "?"
+                mes_iid = f"mes_{ano}_{mes}"
+                tabela.insert("", "end", iid=mes_iid, text=mes_label, open=True, tags=("mes_header",))
+                for d in por_mes[(ano, mes)]:
+                    tabela.insert(mes_iid, "end", values=(
+                        d["data"], d.get("tipo", ""),
+                        d.get("audio", ""), d.get("video", ""),
+                        d.get("microfone", ""), d.get("indicadores", "")
+                    ))
+            tabela.tag_configure("mes_header", font=("Helvetica", 10, "bold"), foreground="#1a56a0")
 
         def carregar_salvos():
             from ttkbootstrap.dialogs import Messagebox
@@ -2912,19 +2926,59 @@ class ModernApp:
             _popula_tabela(todas)
 
         def gerar_auto():
+            import datetime as _dt
+            from ttkbootstrap.dialogs import Messagebox
             idx_dia = mapa_dia.get(dia_semana_var.get())
             idx_fds = mapa_fds.get(dia_fds_var.get())
             if idx_dia is None and idx_fds is None:
-                from ttkbootstrap.dialogs import Messagebox
                 Messagebox.show_warning("Selecione ao menos um dia de reunião.", "Atenção")
                 return
-            datas = DesignacoesSalao.gerar_datas(idx_dia, idx_fds, meses_var.get())
-            if not datas:
-                from ttkbootstrap.dialogs import Messagebox
-                Messagebox.show_warning("Nenhuma data gerada para o período.", "Atenção")
-                return
-            designacoes = DesignacoesSalao.gerar_designacoes(datas)
-            _popula_tabela(designacoes)
+            MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",
+                        6:"Junho",7:"Julho",8:"Agosto",9:"Setembro",
+                        10:"Outubro",11:"Novembro",12:"Dezembro"}
+            dlg = ttk.Toplevel(win)
+            dlg.title("Selecionar Meses")
+            dlg.grab_set()
+            dlg.resizable(False, False)
+            ttk.Label(dlg, text="Selecione os meses para gerar:",
+                      font=("Helvetica", 11, "bold"), bootstyle="primary").pack(padx=20, pady=(15, 8))
+            hoje = _dt.date.today()
+            opcoes = []
+            for i in range(12):
+                m = (hoje.month - 1 + i) % 12 + 1
+                a = hoje.year + (hoje.month - 1 + i) // 12
+                opcoes.append((a, m))
+            chk_vars = {}
+            chk_frame = ttk.Frame(dlg, padding=5)
+            chk_frame.pack(padx=20, pady=5)
+            for i, (a, m) in enumerate(opcoes):
+                var = ttk.BooleanVar(value=False)
+                chk_vars[(a, m)] = var
+                ttk.Checkbutton(chk_frame, text=f"{MESES_PT[m]} {a}",
+                                variable=var, bootstyle="primary").grid(
+                    row=i // 3, column=i % 3, sticky=W, padx=12, pady=3)
+            def confirmar_gerar():
+                selecionados = [(a, m) for (a, m), v in chk_vars.items() if v.get()]
+                if not selecionados:
+                    Messagebox.show_warning("Selecione ao menos um mês.", "Atenção", parent=dlg)
+                    return
+                dlg.destroy()
+                datas = DesignacoesSalao.gerar_datas_meses(idx_dia, idx_fds, selecionados)
+                if not datas:
+                    Messagebox.show_warning("Nenhuma data gerada.", "Atenção", parent=win)
+                    return
+                designacoes = DesignacoesSalao.gerar_designacoes(datas)
+                _popula_tabela(designacoes)
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(padx=20, pady=15)
+            ttk.Button(btn_f, text="Gerar", bootstyle="success",
+                       command=confirmar_gerar).pack(side=LEFT, padx=(0, 10))
+            ttk.Button(btn_f, text="Cancelar", bootstyle="secondary",
+                       command=dlg.destroy).pack(side=LEFT)
+            dlg.update_idletasks()
+            x = win.winfo_x() + (win.winfo_width() - dlg.winfo_reqwidth()) // 2
+            y = win.winfo_y() + (win.winfo_height() - dlg.winfo_reqheight()) // 2
+            dlg.geometry(f"+{x}+{y}")
 
         def salvar():
             import datetime as _dt
@@ -2934,17 +2988,18 @@ class ModernApp:
             # Coletar dados da tabela
             por_mes = defaultdict(list)
             todas_linhas = []
-            for iid in tabela.get_children():
-                vals = tabela.item(iid)["values"]
-                data_str, tipo, audio, video, mic, ind = (str(v) for v in vals)
-                try:
-                    d = _dt.datetime.strptime(data_str, "%d/%m/%Y")
-                except ValueError:
-                    continue
-                row = {"data": data_str, "tipo": tipo, "audio": audio,
-                       "video": video, "microfone": mic, "indicadores": ind}
-                por_mes[(d.year, d.month)].append(row)
-                todas_linhas.append(row)
+            for mes_iid in tabela.get_children():
+                for iid in tabela.get_children(mes_iid):
+                    vals = tabela.item(iid)["values"]
+                    data_str, tipo, audio, video, mic, ind = (str(v) for v in vals)
+                    try:
+                        d = _dt.datetime.strptime(data_str, "%d/%m/%Y")
+                    except ValueError:
+                        continue
+                    row = {"data": data_str, "tipo": tipo, "audio": audio,
+                           "video": video, "microfone": mic, "indicadores": ind}
+                    por_mes[(d.year, d.month)].append(row)
+                    todas_linhas.append(row)
 
             if not por_mes:
                 Messagebox.show_warning("Nenhum dado para salvar.", "Atenção")
@@ -3028,38 +3083,35 @@ class ModernApp:
                        command=prev.destroy).pack(side=LEFT)
 
         def excluir_mes():
-            import datetime as _dt
             from ttkbootstrap.dialogs import Messagebox
+            MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",
+                        6:"Junho",7:"Julho",8:"Agosto",9:"Setembro",
+                        10:"Outubro",11:"Novembro",12:"Dezembro"}
             sel = tabela.selection()
             if not sel:
-                Messagebox.show_warning("Selecione uma linha para identificar o mês.", "Atenção", parent=win)
+                Messagebox.show_warning("Selecione um mês ou data.", "Atenção", parent=win)
                 return
-            vals = tabela.item(sel[0])["values"]
-            data_str = str(vals[0])
+            iid = sel[0]
+            parent = tabela.parent(iid)
+            mes_iid = iid if parent == "" else parent
             try:
-                d = _dt.datetime.strptime(data_str, "%d/%m/%Y")
-            except ValueError:
-                Messagebox.show_warning("Data inválida na linha selecionada.", "Atenção", parent=win)
+                _, ano_str, mes_str = mes_iid.split("_")
+                ano, mes = int(ano_str), int(mes_str)
+            except (ValueError, AttributeError):
+                Messagebox.show_warning("Não foi possível identificar o mês.", "Atenção", parent=win)
                 return
             confirm = Messagebox.yesno(
-                f"Excluir todas as designações de {d.month:02d}/{d.year}?\nEsta ação remove o histórico dos irmãos.",
-                "Confirmar Exclusão",
-                parent=win
+                f"Excluir todas as designações de {MESES_PT.get(mes, mes)}/{ano}?\nEsta ação remove o histórico dos irmãos.",
+                "Confirmar Exclusão", parent=win
             )
-            if confirm == "Yes":
-                res = excluir_designacoes_salao(d.year, d.month)
+            if confirm not in (None, "No", "Não", "Cancelar"):
+                res = excluir_designacoes_salao(ano, mes)
+                tabela.delete(mes_iid)
+                msg = res.get("message", "")
                 if res.get("success"):
-                    for iid in tabela.get_children():
-                        v = tabela.item(iid)["values"]
-                        try:
-                            rd = _dt.datetime.strptime(str(v[0]), "%d/%m/%Y")
-                            if rd.year == d.year and rd.month == d.month:
-                                tabela.delete(iid)
-                        except ValueError:
-                            pass
-                    Messagebox.show_info(res.get("message", "Excluído."), "Sucesso", parent=win)
-                else:
-                    Messagebox.show_error(res.get("message", "Erro ao excluir."), "Erro", parent=win)
+                    Messagebox.show_info(msg or "Excluído.", "Sucesso", parent=win)
+                elif msg and msg not in ("Designações não encontradas",):
+                    Messagebox.show_error(msg, "Erro", parent=win)
 
         def exportar_docx():
             import datetime as _dt
@@ -3073,161 +3125,202 @@ class ModernApp:
             from docx.oxml.ns import qn
             from docx.oxml import OxmlElement
 
-            rows = []
-            for iid in tabela.get_children():
-                vals = tabela.item(iid)["values"]
-                rows.append({
-                    "data":       str(vals[0]),
-                    "audio":      str(vals[2]),
-                    "video":      str(vals[3]),
-                    "microfone":  str(vals[4]),
-                    "indicadores":str(vals[5]),
-                })
-
-            if not rows:
+            mes_iids = tabela.get_children()
+            if not mes_iids:
                 Messagebox.show_warning("Nenhum dado na tabela.", "Atenção")
                 return
 
-            caminho = filedialog.asksaveasfilename(
-                defaultextension=".docx",
-                filetypes=[("Word Document", "*.docx")],
-                initialfile="Designacoes_Salao.docx",
-                title="Salvar DOCX"
-            )
-            if not caminho:
+            MESES_PT = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",
+                        6:"Junho",7:"Julho",8:"Agosto",9:"Setembro",
+                        10:"Outubro",11:"Novembro",12:"Dezembro"}
+
+            mes_info = []
+            for iid in mes_iids:
+                try:
+                    _, ano_str, mes_str = iid.split("_")
+                    mes_info.append((int(ano_str), int(mes_str), iid))
+                except (ValueError, AttributeError):
+                    continue
+
+            if not mes_info:
+                Messagebox.show_warning("Nenhum dado na tabela.", "Atenção")
                 return
 
-            doc = Document()
+            dlg = ttk.Toplevel(win)
+            dlg.title("Exportar DOCX — Selecionar Meses")
+            dlg.grab_set()
+            dlg.resizable(False, False)
+            ttk.Label(dlg, text="Selecione os meses para exportar:",
+                      font=("Helvetica", 11, "bold"), bootstyle="primary").pack(padx=20, pady=(15, 8))
+            chk_vars = {}
+            chk_frame = ttk.Frame(dlg, padding=5)
+            chk_frame.pack(padx=20, pady=5)
+            for i, (ano, mes, iid) in enumerate(mes_info):
+                var = ttk.BooleanVar(value=True)
+                chk_vars[iid] = (ano, mes, var)
+                ttk.Checkbutton(chk_frame, text=f"{MESES_PT[mes]} {ano}",
+                                variable=var, bootstyle="primary").grid(
+                    row=i // 3, column=i % 3, sticky=W, padx=12, pady=3)
 
-            # ── Página paisagem, margens estreitas ────────────────────────
-            section = doc.sections[0]
-            section.orientation = WD_ORIENT.LANDSCAPE
-            section.page_width, section.page_height = Cm(29.7), Cm(21.0)
-            section.top_margin    = Cm(1.2)
-            section.bottom_margin = Cm(1.2)
-            section.left_margin   = Cm(1.5)
-            section.right_margin  = Cm(1.5)
+            def fazer_exportar():
+                rows = []
+                for iid, (ano, mes, var) in chk_vars.items():
+                    if not var.get():
+                        continue
+                    for child_iid in tabela.get_children(iid):
+                        vals = tabela.item(child_iid)["values"]
+                        rows.append({
+                            "data":        str(vals[0]),
+                            "audio":       str(vals[2]),
+                            "video":       str(vals[3]),
+                            "microfone":   str(vals[4]),
+                            "indicadores": str(vals[5]),
+                        })
+                if not rows:
+                    Messagebox.show_warning("Nenhum mês selecionado.", "Atenção", parent=dlg)
+                    return
+                dlg.destroy()
 
-            # ── Título ────────────────────────────────────────────────────
-            p_title = doc.add_paragraph()
-            p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run_title = p_title.add_run("Designações Salão")
-            run_title.font.size = Pt(13)
-            run_title.font.bold = True
+                caminho = filedialog.asksaveasfilename(
+                    defaultextension=".docx",
+                    filetypes=[("Word Document", "*.docx")],
+                    initialfile="Designacoes_Salao.docx",
+                    title="Salvar DOCX"
+                )
+                if not caminho:
+                    return
 
-            # ── Tabela ────────────────────────────────────────────────────
-            # Colunas: Data | Áudio | Vídeo | Microfone | Indicadores
-            col_widths = [Cm(2.2), Cm(4.8), Cm(4.8), Cm(6.5), Cm(6.5)]
-            headers    = ["Data", "Áudio", "Vídeo", "Microfone", "Indicadores"]
+                doc = Document()
 
-            table = doc.add_table(rows=1, cols=5)
-            table.style = "Table Grid"
+                section = doc.sections[0]
+                section.orientation = WD_ORIENT.LANDSCAPE
+                section.page_width, section.page_height = Cm(29.7), Cm(21.0)
+                section.top_margin    = Cm(1.2)
+                section.bottom_margin = Cm(1.2)
+                section.left_margin   = Cm(1.5)
+                section.right_margin  = Cm(1.5)
 
-            # Cabeçalho
-            hdr = table.rows[0].cells
-            for i, (txt, w) in enumerate(zip(headers, col_widths)):
-                hdr[i].width = w
-                p = hdr[i].paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p.add_run(txt)
-                run.font.size = Pt(9)
-                run.font.bold = True
-                # Fundo azul claro
-                tc = hdr[i]._tc
-                tcPr = tc.get_or_add_tcPr()
-                shd = OxmlElement('w:shd')
-                shd.set(qn('w:val'), 'clear')
-                shd.set(qn('w:color'), 'auto')
-                shd.set(qn('w:fill'), 'BDD7EE')
-                tcPr.append(shd)
+                p_title = doc.add_paragraph()
+                p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run_title = p_title.add_run("Designações Salão")
+                run_title.font.size = Pt(13)
+                run_title.font.bold = True
 
-            meses_pt = {1:"JANEIRO",2:"FEVEREIRO",3:"MARÇO",4:"ABRIL",5:"MAIO",
-                        6:"JUNHO",7:"JULHO",8:"AGOSTO",9:"SETEMBRO",
-                        10:"OUTUBRO",11:"NOVEMBRO",12:"DEZEMBRO"}
+                col_widths = [Cm(2.2), Cm(4.8), Cm(4.8), Cm(6.5), Cm(6.5)]
+                headers    = ["Data", "Áudio", "Vídeo", "Microfone", "Indicadores"]
 
-            def _set_cell_fill(cell, hex_color):
-                tc = cell._tc
-                tcPr = tc.get_or_add_tcPr()
-                shd = OxmlElement('w:shd')
-                shd.set(qn('w:val'), 'clear')
-                shd.set(qn('w:color'), 'auto')
-                shd.set(qn('w:fill'), hex_color)
-                tcPr.append(shd)
+                table = doc.add_table(rows=1, cols=5)
+                table.style = "Table Grid"
 
-            # Linhas de dados com header de mês mesclado
-            fill_data = ['FFFFFF', 'EBF3FB']
-            prev_month = None
-            month_color_idx = 0
+                hdr = table.rows[0].cells
+                for i, (txt, w) in enumerate(zip(headers, col_widths)):
+                    hdr[i].width = w
+                    p = hdr[i].paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run(txt)
+                    run.font.size = Pt(9)
+                    run.font.bold = True
+                    tc = hdr[i]._tc
+                    tcPr = tc.get_or_add_tcPr()
+                    shd = OxmlElement('w:shd')
+                    shd.set(qn('w:val'), 'clear')
+                    shd.set(qn('w:color'), 'auto')
+                    shd.set(qn('w:fill'), 'BDD7EE')
+                    tcPr.append(shd)
 
-            for row_data in rows:
-                try:
-                    d = _dt.datetime.strptime(row_data["data"], "%d/%m/%Y")
-                    cur_month = (d.year, d.month)
-                except ValueError:
-                    cur_month = None
+                meses_pt = {1:"JANEIRO",2:"FEVEREIRO",3:"MARÇO",4:"ABRIL",5:"MAIO",
+                            6:"JUNHO",7:"JULHO",8:"AGOSTO",9:"SETEMBRO",
+                            10:"OUTUBRO",11:"NOVEMBRO",12:"DEZEMBRO"}
 
-                if cur_month != prev_month:
-                    month_color_idx = 1 - month_color_idx
-                    prev_month = cur_month
+                def _set_cell_fill(cell, hex_color):
+                    tc = cell._tc
+                    tcPr = tc.get_or_add_tcPr()
+                    shd = OxmlElement('w:shd')
+                    shd.set(qn('w:val'), 'clear')
+                    shd.set(qn('w:color'), 'auto')
+                    shd.set(qn('w:fill'), hex_color)
+                    tcPr.append(shd)
 
-                    # ── Linha de cabeçalho do mês (span 5 cols) ──────────
-                    if cur_month:
-                        mes_label = f"{meses_pt.get(cur_month[1], '')}  —  {cur_month[0]}"
-                        hdr_row = table.add_row().cells
-                        # Mescla todas as células
-                        merged = hdr_row[0].merge(hdr_row[1]).merge(hdr_row[2]).merge(hdr_row[3]).merge(hdr_row[4])
-                        p_hdr = merged.paragraphs[0]
-                        p_hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        run_hdr = p_hdr.add_run(mes_label)
-                        run_hdr.font.size = Pt(9)
-                        run_hdr.font.bold = True
-                        run_hdr.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                        _set_cell_fill(merged, '2F5496')
+                fill_data = ['FFFFFF', 'EBF3FB']
+                prev_month = None
+                month_color_idx = 0
 
-                row_cells = table.add_row().cells
-                values_row = [
-                    row_data["data"], row_data["audio"], row_data["video"],
-                    row_data["microfone"], row_data["indicadores"]
-                ]
-                for i, (val, w) in enumerate(zip(values_row, col_widths)):
-                    row_cells[i].width = w
-                    p = row_cells[i].paragraphs[0]
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i == 0 else WD_ALIGN_PARAGRAPH.LEFT
-                    run = p.add_run(val)
-                    run.font.size = Pt(8)
-                    fill = fill_data[month_color_idx]
-                    if fill != 'FFFFFF':
-                        _set_cell_fill(row_cells[i], fill)
+                for row_data in rows:
+                    try:
+                        d = _dt.datetime.strptime(row_data["data"], "%d/%m/%Y")
+                        cur_month = (d.year, d.month)
+                    except ValueError:
+                        cur_month = None
 
-            doc.save(caminho)
-            if Messagebox.yesno(f"DOCX salvo em:\n{caminho}\n\nAbrir arquivo?", "Exportado") == "Yes":
-                os.startfile(caminho)
+                    if cur_month != prev_month:
+                        month_color_idx = 1 - month_color_idx
+                        prev_month = cur_month
+
+                        if cur_month:
+                            mes_label = f"{meses_pt.get(cur_month[1], '')}  —  {cur_month[0]}"
+                            hdr_row = table.add_row().cells
+                            merged = hdr_row[0].merge(hdr_row[1]).merge(hdr_row[2]).merge(hdr_row[3]).merge(hdr_row[4])
+                            p_hdr = merged.paragraphs[0]
+                            p_hdr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            run_hdr = p_hdr.add_run(mes_label)
+                            run_hdr.font.size = Pt(9)
+                            run_hdr.font.bold = True
+                            run_hdr.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                            _set_cell_fill(merged, '2F5496')
+
+                    row_cells = table.add_row().cells
+                    values_row = [
+                        row_data["data"], row_data["audio"], row_data["video"],
+                        row_data["microfone"], row_data["indicadores"]
+                    ]
+                    for i, (val, w) in enumerate(zip(values_row, col_widths)):
+                        row_cells[i].width = w
+                        p = row_cells[i].paragraphs[0]
+                        p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i == 0 else WD_ALIGN_PARAGRAPH.LEFT
+                        run = p.add_run(val)
+                        run.font.size = Pt(8)
+                        fill = fill_data[month_color_idx]
+                        if fill != 'FFFFFF':
+                            _set_cell_fill(row_cells[i], fill)
+
+                doc.save(caminho)
+                if Messagebox.yesno(f"DOCX salvo em:\n{caminho}\n\nAbrir arquivo?", "Exportado") == "Yes":
+                    os.startfile(caminho)
+
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(padx=20, pady=15)
+            ttk.Button(btn_f, text="Exportar", bootstyle="success",
+                       command=fazer_exportar).pack(side=LEFT, padx=(0, 10))
+            ttk.Button(btn_f, text="Cancelar", bootstyle="secondary",
+                       command=dlg.destroy).pack(side=LEFT)
+            dlg.update_idletasks()
+            x = win.winfo_x() + (win.winfo_width() - dlg.winfo_reqwidth()) // 2
+            y = win.winfo_y() + (win.winfo_height() - dlg.winfo_reqheight()) // 2
+            dlg.geometry(f"+{x}+{y}")
 
         def on_double_click(event):
             item = tabela.identify_row(event.y)
             col  = tabela.identify_column(event.x)
-            if not item or col == "#1":
+            if not item:
                 return
-            try:
-                disp_idx = int(col.replace("#", "")) - 1  # 0-based display index
-                if disp_idx <= 0 or disp_idx > 4:
-                    return
-            except ValueError:
+            # Ignorar nós de mês e coluna de árvore/data
+            if tabela.parent(item) == "" or col in ("#0", "#1"):
                 return
-            # displaycolumns=("data","audio","video","microfone","indicadores") omite "tipo" (values[1])
-            # display idx → values idx: 0→0, 1→2, 2→3, 3→4, 4→5
-            disp_to_val = {0: 0, 1: 2, 2: 3, 3: 4, 4: 5}
-            col_labels   = {1: "Áudio", 2: "Vídeo", 3: "Microfone", 4: "Indicadores"}
-            values_idx = disp_to_val[disp_idx]
+            # #2=audio, #3=video, #4=microfone, #5=indicadores
+            col_to_val = {"#2": 2, "#3": 3, "#4": 4, "#5": 5}
+            col_labels  = {"#2": "Áudio", "#3": "Vídeo", "#4": "Microfone", "#5": "Indicadores"}
+            if col not in col_to_val:
+                return
+            values_idx = col_to_val[col]
             current = tabela.item(item)["values"]
             popup = ttk.Toplevel(win)
-            popup.title(f"Editar — {col_labels.get(disp_idx, '')}")
+            popup.title(f"Editar — {col_labels.get(col, '')}")
             popup.resizable(False, False)
             popup.grab_set()
             entry_var = ttk.StringVar(value=str(current[values_idx]))
             ttk.Entry(popup, textvariable=entry_var, width=40,
                       bootstyle="primary").pack(padx=15, pady=(15, 5))
-            if disp_idx in (3, 4):
+            if col in ("#4", "#5"):
                 ttk.Label(popup, text='Formato: "Nome1 / Nome2"',
                           bootstyle="secondary", font=("Helvetica", 9)).pack()
             def confirmar(event=None):
