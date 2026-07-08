@@ -43,6 +43,7 @@ try:
     from database import post, getAllPub, delete, listar_reunioes_final_semana, buscar_reuniao_final_semana, excluir_reuniao_final_semana, db_ops
     from database.db_operations import DatabaseOperations
     import util.janelas as janelas
+    import util.updater as updater
     from util.startup_manager import initialize_application
     import datetime
     import threading
@@ -3706,11 +3707,73 @@ class ModernApp:
         y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")
 
+def _verificar_atualizacao_async(root):
+    """Verifica atualização em background e, se houver, oferece instalar."""
+    def _worker():
+        info = updater.verificar_atualizacao()
+        if info:
+            root.after(0, lambda: _oferecer_atualizacao(root, info))
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _oferecer_atualizacao(root, info):
+    """Pergunta ao usuário e conduz download + instalação."""
+    resposta = Messagebox.yesno(
+        f"Uma nova versão ({info['versao']}) está disponível.\n\n"
+        "Deseja baixar e instalar agora? O aplicativo será fechado durante a "
+        "atualização.",
+        "Atualização disponível",
+        parent=root,
+    )
+    if resposta != "Yes":
+        return
+
+    # Janela simples de progresso.
+    win = ttk.Toplevel(root)
+    win.title("Baixando atualização")
+    win.geometry("360x120")
+    win.transient(root)
+    win.resizable(False, False)
+    ttk.Label(win, text="Baixando o instalador, aguarde...").pack(pady=(20, 10))
+    barra = ttk.Progressbar(win, mode="determinate", maximum=100, length=320)
+    barra.pack(pady=5)
+
+    def _on_progress(baixado, total):
+        pct = int(baixado * 100 / total) if total else 0
+        root.after(0, lambda: barra.configure(value=pct))
+
+    def _baixar():
+        try:
+            caminho = updater.baixar_instalador(info["url"], on_progress=_on_progress)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Falha ao baixar atualização: {e}")
+            root.after(0, win.destroy)
+            root.after(0, lambda: Messagebox.show_error(
+                "Não foi possível baixar a atualização. Tente novamente mais tarde.",
+                "Erro na atualização", parent=root))
+            return
+        # Lança o instalador e encerra o app (libera arquivos para substituição).
+        updater.lancar_instalador_e_sair(caminho)
+
+    threading.Thread(target=_baixar, daemon=True).start()
+
+
 if __name__ == "__main__":
     try:
         # Criar janela principal com tema
         root = ttk.Window(themename="litera")
         root.title("JW Mural")
+
+        # Mutex nomeado para o Inno Setup detectar/fechar a instância em execução
+        # durante a atualização (AppMutex=JW_Mural_Running no JW_Mural.iss).
+        _update_mutex = None
+        if getattr(sys, 'frozen', False):
+            try:
+                import ctypes
+                _update_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "JW_Mural_Running")
+            except Exception:
+                pass
 
         # Capturar exceções de callbacks tkinter no log (console=False swallows them)
         _main_logger = logging.getLogger(__name__)
@@ -3758,6 +3821,9 @@ if __name__ == "__main__":
                 )
                 root.quit()
                 sys.exit(1)
+            # Verificar atualizações (apenas no app compilado) sem travar a UI.
+            if getattr(sys, 'frozen', False):
+                root.after(500, lambda: _verificar_atualizacao_async(root))
         
         # Agendar a inicialização para acontecer após a janela principal estar pronta
         root.after(100, start_checks)

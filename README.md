@@ -33,7 +33,7 @@ O **JW Mural** é uma aplicação desktop desenvolvida em Python que automatiza 
 
 ## ✨ Funcionalidades
 
-### 1. Criar Reunião
+### 1. Criar Reunião de Meio de Semana
 - Extração automática de dados do wol.jw.org via web scraping
 - Geração de documentos Word formatados (S140)
 - Suporte para múltiplas semanas
@@ -42,10 +42,17 @@ O **JW Mural** é uma aplicação desktop desenvolvida em Python que automatiza 
   - **Seleção automática:** Critérios por parte (Ancião, Servo Ministerial, permissões, sexo), prioriza quem está há mais tempo sem participar; modal de revisão permite editar antes de gerar
 - Integração com base de dados de publicadores
 
+### 1.1 Criar Reunião Final de Semana
+- Extração dos títulos do estudo da Sentinela na página de meetings (wol.jw.org)
+- Geração de **dois** documentos Word: Sentinela (dirigente, títulos e leitores) e Oradores (presidente, orador e tema por semana)
+- **Seleção automática opcional:** Presidente = anciãos e servos ministeriais (quem fez menos "Presidente Final Semana"); Leitor da Sentinela = publicadores com permissão leitura_sentinela (quem fez menos "Leitura Sentinela"); distribuição um por semana com ciclo
+- Tema de discurso com **autocomplete** a partir de `assets/temas_discursos.json`
+- Templates em `Templates/` (template_final_semana_sentinela.docx e template_final_semana_oradores.docx) são apenas lidos; saída em `documentosCriados/`
+
 ### 2. Gerenciar Publicadores
 - CRUD completo de publicadores
 - Status de batismo, sexo, Ancião, Servo Ministerial
-- Permissões: parte da escola, oração, leitura na reunião
+- Permissões: parte da escola, oração, leitura na reunião, leitura_sentinela, presidente_final_semana
 - Busca e filtros
 - Histórico de última parte realizada
 - Validação de nomes duplicados
@@ -98,7 +105,17 @@ python-dotenv
 
 ## 🚀 Instalação
 
-### 1. Clonar o Repositório
+### Instalação via Setup_JW_Mural.exe (recomendado)
+
+1. Execute `installer_output\Setup_JW_Mural.exe` como **Administrador**
+2. O instalador irá:
+   - Instalar o JW Mural em `C:\Program Files\JW Mural\`
+   - Instalar/iniciar MongoDB via winget (se não estiver presente)
+   - Inicializar as collections do banco
+   - Abrir o aplicativo ao final
+3. Inicie o app pelo atalho criado ou executando `JW_Mural.exe` na pasta de instalação
+
+### Instalação manual (desenvolvimento)
 
 ```bash
 git clone <url-do-repositorio>
@@ -129,20 +146,31 @@ pip install -r requirements.txt
 
 ### 4. Configurar Variáveis de Ambiente
 
-Crie um arquivo `.env` na raiz do projeto com o seguinte conteúdo:
+Copie o modelo `.env.example` para `.env` e ajuste os valores:
 
+**Windows:**
+```bash
+copy .env.example .env
+```
+
+**Linux/macOS:**
+```bash
+cp .env.example .env
+```
+
+> ⚠️ O arquivo `.env` **não** é versionado (está no `.gitignore`) porque a
+> `MONGODB_URI` pode conter usuário/senha em produção (ex.: MongoDB Atlas).
+> Nunca comite o `.env` nem chaves AWS.
+
+Conteúdo padrão (`.env.example`):
 ```env
-# Tipo de banco de dados (mongodb ou dynamodb)
 DB_TYPE=mongodb
-
-# Configurações MongoDB
 MONGODB_URI=mongodb://localhost:27017/
 MONGODB_DB_NAME=jw_mural
 MONGODB_COLLECTION=publicadores
-
-# Configurações DynamoDB (se usar)
-AWS_REGION=us-east-1
-DYNAMODB_TABLE=publicadores
+# DynamoDB (opcional):
+# AWS_REGION=us-east-1
+# DYNAMODB_TABLE=publicadores
 ```
 
 ### 5. Configurar Banco de Dados
@@ -159,11 +187,7 @@ DYNAMODB_TABLE=publicadores
 2. Crie uma tabela no DynamoDB com a chave primária `nome` (String)
 3. Configure as variáveis de ambiente apropriadas
 
-### 6. Corrigir .env (se usado startup.bat antigo)
-
-O `MONGODB_COLLECTION` deve ser `publicadores` (lista de pessoas). A collection `reunioes` é criada automaticamente no mesmo banco. Se o `startup.bat` criou `.env` com `MONGODB_COLLECTION=reunioes`, altere para `publicadores`.
-
-### 7. Verificar Estrutura de Diretórios
+### 6. Verificar Estrutura de Diretórios
 
 Certifique-se de que os seguintes diretórios existem:
 
@@ -177,16 +201,10 @@ JW_Mural/
 └── util/               # Utilitários
 ```
 
-Se não existirem, execute:
+Se não existirem, crie manualmente:
 
-**Windows:**
 ```bash
-setup\startup.bat
-```
-
-**Linux/macOS:**
-```bash
-mkdir -p assets documentosCriados Templates process database util
+mkdir assets documentosCriados Templates
 ```
 
 ## ⚙️ Configuração
@@ -225,7 +243,7 @@ O ícone deve estar localizado em `assets/icon.ico` (Windows) ou `assets/icon.pn
 
 **Windows:**
 ```bash
-python layout.py
+python src/layout.py
 ```
 
 Ou execute o executável compilado:
@@ -253,6 +271,16 @@ python3 layout.py
    - **Com seleção automática:** O sistema preenche as partes e exibe um modal para revisar e editar. Clique em "Salvar e Continuar" para gerar o documento
    - **Sem seleção automática:** Será solicitado o nome do publicador para cada parte em diálogos individuais
 5. O documento será gerado em `documentosCriados/` e aberto automaticamente
+
+### Criar uma Reunião Final de Semana
+
+1. Clique em **"Criar Reunião Final de Semana"** no menu principal
+2. Preencha a **URL** da página de meetings (ex.: `https://wol.jw.org/pt/wol/meetings/...`) e o **Nome do Arquivo**
+3. Opcional: marque **Seleção automática do Presidente** e/ou **Seleção automática do Leitor da Sentinela**
+4. Clique em **"Gerar Reunião"**
+5. Escolha o **Dirigente de Sentinela** no modal (entre anciãos)
+6. No próximo modal, preencha por semana: **Tema Discurso** (autocomplete), **Orador**, **Presidente** e **Leitor Sentinela** (autocomplete); confirme
+7. Dois documentos (Sentinela e Oradores) serão gerados em `documentosCriados/` e abertos
 
 ### Gerenciar Publicadores
 
@@ -285,38 +313,41 @@ python3 layout.py
 
 ```
 JW_Mural/
-├── assets/                    # Recursos visuais
-│   └── icon.ico              # Ícone da aplicação
-├── database/                 # Módulos de banco de dados
-│   ├── __init__.py           # Exportações do módulo
-│   ├── db_connection.py     # Conexão com banco
-│   ├── db_operations.py     # Operações CRUD
-│   └── init_db.py           # Inicialização do banco
-├── documentosCriados/        # Documentos gerados
-├── logs/                     # Logs do sistema
-├── process/                  # Processamento de dados
-│   ├── s140.py              # Geração de documentos S140
-│   └── webscrapper.py       # Web scraping
-├── setup/                    # Scripts de setup
-│   ├── startup.bat          # Script de inicialização Windows
-│   └── setup_env.py         # Configuração de ambiente
-├── Templates/                # Templates Word
-│   └── Template_PT.docx     # Template padrão
-├── util/                     # Utilitários
-│   ├── comandosUteis.py     # Funções auxiliares
-│   ├── db_utils.py          # Utilitários de banco
-│   ├── janelas.py           # Diálogos e modais
-│   ├── startup_manager.py   # Gerenciador de inicialização
-│   └── system_checks.py     # Verificações de sistema
-├── .env                      # Variáveis de ambiente (criar)
-├── build.py                  # Script de build
-├── JW_Mural.spec            # Configuração PyInstaller
-├── layout.py                # Interface gráfica principal
-├── requirements.txt         # Dependências Python
-├── transcribe.py            # Script opcional: transcrição de áudio com Whisper
-├── README.md                # Este arquivo
-├── README_IA.md             # Especificação técnica para IA e desenvolvedores
-└── AGENTS.md                # Guia rápido para agentes IA
+├── build.bat                 # Pipeline de build: PyInstaller + Inno Setup
+├── install_mongo.ps1         # Script de instalação MongoDB (bundlado no installer)
+├── JW_Mural.iss              # Configuração Inno Setup (gera Setup_JW_Mural.exe)
+├── JW_Mural.spec             # Configuração PyInstaller
+├── VERSION.txt               # Versão do app (fonte única; lida pelo app e pelo .iss)
+├── .env.example              # Modelo de variáveis de ambiente (copie para .env)
+├── .gitignore
+├── requirements.txt          # Dependências Python
+├── README.md
+├── assets/                   # Recursos visuais
+│   ├── jw_mural_icon.ico     # Ícone da aplicação
+│   └── temas_discursos.json  # Lista de temas para autocomplete
+├── Templates/                # Templates Word (lidos, não alterados)
+│   ├── Template_PT.docx
+│   ├── template_final_semana_sentinela.docx
+│   └── template_final_semana_oradores.docx
+├── Docs/                     # Documentação técnica (01..06)
+├── documentosCriados/        # Documentos gerados (não versionados)
+└── src/                      # Código-fonte
+    ├── layout.py             # Interface gráfica principal (entrypoint)
+    ├── version.py            # __version__ (lê VERSION.txt)
+    ├── database/             # Acesso a dados
+    │   ├── __init__.py
+    │   ├── db_operations.py  # Operações CRUD
+    │   └── init_db.py        # Inicialização do banco
+    ├── process/              # Processamento de dados
+    │   ├── s140.py           # Gerador S140 (meio de semana)
+    │   ├── final_semana.py   # Gerador final de semana
+    │   └── webscrapper.py    # Web scraping wol.jw.org
+    └── util/                 # Utilitários
+        ├── db_utils.py
+        ├── janelas.py
+        ├── startup_manager.py
+        ├── system_checks.py
+        └── updater.py        # Auto-atualização via GitHub Releases
 ```
 
 ### Descrição dos Módulos Principais
@@ -352,46 +383,38 @@ Script separado para transcrição de áudio usando [Whisper](https://github.com
 
 ### Documentação para Desenvolvedores
 
-- **[README_IA.md](README_IA.md)**: Especificação técnica completa (arquitetura, fluxos, modelos de dados, APIs) para assistentes de IA e desenvolvedores
-- **[AGENTS.md](AGENTS.md)**: Guia rápido para agentes IA
+- **[Docs/](Docs/README.md)**: Documentação detalhada (arquitetura, banco de dados, módulos e fluxos)
+- **[Docs/06-Build-e-Instalador.md](Docs/06-Build-e-Instalador.md)**: Como gerar e distribuir o instalador
 
 ## 🔨 Build e Deploy
 
-### Compilar Executável
+Ver documentação completa: **[Docs/06-Build-e-Instalador.md](Docs/06-Build-e-Instalador.md)**
 
-O projeto utiliza PyInstaller para criar executáveis standalone.
+### Resumo rápido
 
-#### Usando build.py
-
-```bash
-python build.py
+```bat
+build.bat
 ```
 
-O executável será gerado em `dist/JW_Mural/`.
+Gera `installer_output\Setup_JW_Mural.exe`. Requer PyInstaller e Inno Setup instalados.
 
-#### Configuração Manual
+### Atualizações automáticas
 
-Edite `JW_Mural.spec` conforme necessário e execute:
+O app instalado verifica atualizações ao abrir, consultando os **GitHub
+Releases** do repositório. Havendo versão mais nova, avisa o usuário, baixa o
+novo `Setup_JW_Mural.exe` e o executa — atualizando por cima da instalação.
 
-```bash
-pyinstaller JW_Mural.spec
-```
+Para publicar uma nova versão:
 
-### Arquivos Incluídos no Build
+1. Editar `VERSION.txt` (ex.: `1.1`) — fonte única de versão (usada pelo app e pelo instalador).
+2. Rodar `build.bat`.
+3. Publicar o release anexando o instalador (o asset **precisa** se chamar `Setup_JW_Mural.exe`):
+   ```bash
+   gh release create v1.1 installer_output/Setup_JW_Mural.exe -t "v1.1" -n "Notas da versão"
+   ```
 
-- `assets/`: Recursos visuais
-- `database/`: Módulos de banco
-- `process/`: Processamento
-- `util/`: Utilitários
-- `Templates/`: Templates Word
-- `documentosCriados/`: Diretório de saída
-
-### Distribuição
-
-1. Compile o executável
-2. Distribua a pasta `dist/JW_Mural/` completa
-3. Certifique-se de que o MongoDB está instalado no sistema destino
-4. Configure o arquivo `.env` no sistema destino
+> O repositório (ou ao menos os releases) precisa ser **público** para a
+> verificação funcionar sem token. Detalhes: **[Docs/06-Build-e-Instalador.md](Docs/06-Build-e-Instalador.md)**.
 
 ## 🗺️ Roadmap
 
@@ -433,7 +456,7 @@ pyinstaller JW_Mural.spec
 **Causa:** Estrutura de diretórios não foi criada.
 
 **Solução:**
-Execute `setup\startup.bat` (Windows) ou crie os diretórios manualmente.
+Crie os diretórios manualmente: `mkdir assets documentosCriados Templates`
 
 ### Erro: "Template não encontrado"
 
@@ -490,5 +513,5 @@ Para suporte, abra uma issue no repositório ou entre em contato com os mantened
 
 ---
 
-**Versão:** 1.1  
+**Versão:** ver `VERSION.txt`  
 **Última atualização:** 2026

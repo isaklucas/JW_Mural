@@ -1,0 +1,45 @@
+# === Segredos / configuração local ===
+# .env contém a URI do banco (pode ter usuário/senha em produção). NUNCA versionar.
+.env
+*.env
+!.env.example
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# === Ambientes virtuais ===
+.venv/
+venv/
+env/
+
+# === Build / PyInstaller / Inno Setup ===
+build/
+dist/
+installer_output/
+*.manifest
+
+# === Saídas geradas em runtime ===
+# Documentos gerados contêm nomes de publicadores (dados pessoais) — não versionar.
+documentosCriados/*.docx
+documentosCriados/*.odt
+documentosCriados/*.pdf
+!documentosCriados/.gitkeep
+backups/
+logs/
+*.log
+
+# === Sistema operacional / editores ===
+# 'nul' = nome reservado do Windows; surge de redirect quebrado (> nul) no git-bash
+nul
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/

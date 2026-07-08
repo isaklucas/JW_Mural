@@ -16,8 +16,11 @@ a = Analysis(
         ('Templates', 'Templates'),
         ('documentosCriados', 'documentosCriados'),
         ('.env', '.'),
+        ('VERSION.txt', '.'),
     ] + mpl_datas + ttk_datas,
     hiddenimports=[
+        'version',
+        'util.updater',
         'ttkbootstrap',
         'ttkbootstrap.themes',
         'ttkbootstrap.style',
