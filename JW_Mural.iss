@@ -64,8 +64,8 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; 1. Instala/inicia MongoDB
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -NonInteractive -File ""{app}\install_mongo.ps1"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Configurando MongoDB..."; Description: "Instalar/iniciar MongoDB"
+; 1. Instala/inicia MongoDB (visivel: o download via winget pode levar minutos)
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -NoProfile -File ""{app}\install_mongo.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated; StatusMsg: "Configurando MongoDB (pode levar alguns minutos)..."; Description: "Instalar/iniciar MongoDB"
 
 ; 2. Inicializa colecoes e indices no banco
 Filename: "{app}\{#AppExeName}"; Parameters: "--init-db"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Inicializando banco de dados..."
