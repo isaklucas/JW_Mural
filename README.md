@@ -18,15 +18,15 @@ Os documentos são salvos em `documentosCriados/`.
 
 - Windows 10 ou superior
 - Python 3.11+ (só para rodar em modo desenvolvimento)
-- MongoDB rodando localmente (o instalador cuida disso automaticamente)
+- **MongoDB rodando localmente** — dependência externa, instale antes de usar o app (ver [Instalar o MongoDB](#instalar-o-mongodb))
 
 ## Como rodar
 
 ### Opção A — Usuário final (instalador)
 
-1. Execute `Setup_JW_Mural.exe` como **Administrador**.
-2. O instalador instala o app, configura o MongoDB e inicializa o banco.
-3. Abra pelo atalho criado na Área de Trabalho / Menu Iniciar.
+1. **Instale o MongoDB** antes (ver [Instalar o MongoDB](#instalar-o-mongodb)).
+2. Execute `Setup_JW_Mural.exe` como **Administrador**.
+3. Abra pelo atalho criado na Área de Trabalho / Menu Iniciar. O app cria as coleções no primeiro acesso.
 
 O app instalado se **atualiza sozinho**: ao abrir, verifica se há versão nova e oferece baixar e instalar.
 
@@ -52,6 +52,38 @@ python src/layout.py
 ```
 
 > Precisa de um MongoDB acessível na `MONGODB_URI` do `.env` (padrão: `mongodb://localhost:27017/`).
+
+## Instalar o MongoDB
+
+O MongoDB é uma **dependência externa** e **não** é instalado pelo `Setup_JW_Mural.exe`. Instale uma vez, por máquina, antes de usar o app.
+
+> **Use a versão 7.0 (LTS).** O MongoDB 8.x falha ao iniciar em algumas máquinas Windows
+> (`entry point GetProcessWorkingSetSize not found`, erro `0xC0000139`).
+
+Escolha uma opção:
+
+**A — Script incluso (recomendado).** Após instalar o app, rode como Administrador:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\JW Mural\install_mongo.ps1"
+```
+
+O script instala o Visual C++ Redistributable + MongoDB 7.0, cria o serviço e valida a porta 27017.
+
+**B — winget (manual):**
+
+```powershell
+winget install -e --id MongoDB.Server --version 7.0.28 --scope machine `
+  --accept-package-agreements --accept-source-agreements
+```
+
+**C — MSI oficial:** baixe em <https://www.mongodb.com/try/download/community> (Version 7.0, Package MSI) e marque "Install MongoD as a Service".
+
+Verifique que está no ar:
+
+```powershell
+Get-Service MongoDB          # Status deve ser Running
+```
 
 ## Configuração (`.env`)
 

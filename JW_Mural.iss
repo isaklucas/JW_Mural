@@ -53,7 +53,7 @@ Source: "Templates\*"; DestDir: "{app}\Templates"; Flags: ignoreversion
 Source: "assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs
 ; .env do projeto
 Source: ".env"; DestDir: "{app}"; Flags: ignoreversion
-; Script de instalacao do MongoDB
+; Script OPCIONAL para instalar o MongoDB manualmente (dependencia externa)
 Source: "install_mongo.ps1"; DestDir: "{app}"; Flags: ignoreversion
 ; Versao ao lado do exe (o app le para checar atualizacoes)
 Source: "VERSION.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -64,13 +64,11 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; 1. Instala/inicia MongoDB (visivel: o download via winget pode levar minutos)
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -NoProfile -File ""{app}\install_mongo.ps1"""; WorkingDir: "{app}"; Flags: waituntilterminated; StatusMsg: "Configurando MongoDB (pode levar alguns minutos)..."; Description: "Instalar/iniciar MongoDB"
+; MongoDB NAO e instalado pelo setup — e dependencia manual (ver README).
+; O app cria as colecoes no primeiro acesso; install_mongo.ps1 fica em {app}
+; para instalacao manual opcional do MongoDB.
 
-; 2. Inicializa colecoes e indices no banco
-Filename: "{app}\{#AppExeName}"; Parameters: "--init-db"; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; StatusMsg: "Inicializando banco de dados..."
-
-; 3. Abre o app ao final (opcional)
+; Abre o app ao final (opcional)
 Filename: "{app}\{#AppExeName}"; Description: "Iniciar {#AppName} agora"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
