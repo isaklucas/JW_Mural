@@ -79,7 +79,8 @@ if ($dirty) {
 
 # ── Bump VERSION.txt ─────────────────────────────────────────────────────
 Step "Bump VERSION.txt -> $Version"
-Set-Content -Path "VERSION.txt" -Value $Version -Encoding utf8 -NoNewline
+# UTF-8 SEM BOM: version.py faz read().strip() (nao remove BOM) e o Inno le com FileRead.
+[System.IO.File]::WriteAllText((Join-Path $RepoRoot "VERSION.txt"), "$Version`n", (New-Object System.Text.UTF8Encoding($false)))
 git add -- VERSION.txt
 # So commita se houve mudanca (a versao pode ja estar em VERSION.txt).
 git diff --cached --quiet
@@ -91,7 +92,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # ── Build ────────────────────────────────────────────────────────────────
 Step "Build (PyInstaller + Inno Setup)"
-cmd /c build.bat
+$bat = Join-Path $RepoRoot "build.bat"
+cmd /c "`"$bat`""
 if ($LASTEXITCODE -ne 0) { Fail "build.bat falhou (exit $LASTEXITCODE)." }
 
 $Setup = "installer_output\Setup_JW_Mural.exe"
