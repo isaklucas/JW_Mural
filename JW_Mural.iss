@@ -27,11 +27,12 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 MinVersion=10.0.17763
-; Permite atualizar por cima da versao em execucao: o Inno fecha o app aberto
-; (que registra o mutex JW_Mural_Running) antes de substituir os arquivos.
+; Permite atualizar por cima da versao em execucao: o Inno usa o Restart Manager
+; para fechar qualquer instancia que ainda esteja segurando arquivos em {app}.
+; NAO usar AppMutex: ele exibe a mensagem "app em execucao / clique OK", que entra
+; em loop infinito quando o proprio app dispara o instalador (ver src/util/updater.py).
 CloseApplications=yes
 RestartApplications=no
-AppMutex=JW_Mural_Running
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

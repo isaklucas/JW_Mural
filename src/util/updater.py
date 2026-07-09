@@ -129,16 +129,32 @@ def baixar_instalador(url, on_progress=None):
 
 
 def lancar_instalador_e_sair(caminho):
-    """Lança o instalador e encerra o processo atual.
+    """Lança o instalador (elevado) e encerra o processo atual.
 
-    O Inno Setup (com CloseApplications/AppMutex) aguarda o app fechar e então
-    substitui os arquivos. Por isso encerramos logo após lançar.
+    O instalador exige admin (PrivilegesRequired=admin), então elevamos via
+    ShellExecute 'runas'. Passamos /FORCECLOSEAPPLICATIONS para o Inno usar o
+    Restart Manager e fechar qualquer instância que ainda segure arquivos em
+    {app}, sem exibir diálogo. Não usamos AppMutex (causava loop). Encerramos o
+    app logo em seguida para liberar os arquivos.
     """
-    logger.info(f"Lançando instalador: {caminho}")
+    params = "/FORCECLOSEAPPLICATIONS"
+    logger.info(f"Lançando instalador: {caminho} {params}")
+    lancado = False
     try:
-        subprocess.Popen([caminho], close_fds=True)
-    except Exception:
-        # Fallback: abrir via shell do Windows.
-        os.startfile(caminho)  # noqa: S606
+        import ctypes
+        # SW_SHOWNORMAL=1; retorno > 32 indica sucesso.
+        rc = ctypes.windll.shell32.ShellExecuteW(None, "runas", caminho, params, None, 1)
+        lancado = int(rc) > 32
+        if not lancado:
+            logger.warning(f"ShellExecuteW retornou {rc}; tentando fallback.")
+    except Exception as e:
+        logger.warning(f"Falha ao elevar instalador ({e}); tentando fallback.")
+
+    if not lancado:
+        try:
+            subprocess.Popen([caminho, params], close_fds=True)
+        except Exception:
+            os.startfile(caminho)  # noqa: S606
+
     # Encerrar o app para liberar os arquivos.
     os._exit(0)

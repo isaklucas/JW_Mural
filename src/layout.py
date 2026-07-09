@@ -3916,16 +3916,6 @@ if __name__ == "__main__":
         root = ttk.Window(themename="litera")
         root.title("JW Mural")
 
-        # Mutex nomeado para o Inno Setup detectar/fechar a instância em execução
-        # durante a atualização (AppMutex=JW_Mural_Running no JW_Mural.iss).
-        _update_mutex = None
-        if getattr(sys, 'frozen', False):
-            try:
-                import ctypes
-                _update_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "JW_Mural_Running")
-            except Exception:
-                pass
-
         # Capturar exceções de callbacks tkinter no log (console=False swallows them)
         _main_logger = logging.getLogger(__name__)
         def _tk_exception(exc, val, tb):
