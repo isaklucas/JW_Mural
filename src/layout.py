@@ -2964,12 +2964,163 @@ class ModernApp:
                     Messagebox.show_warning("Selecione ao menos um mês.", "Atenção", parent=dlg)
                     return
                 dlg.destroy()
+                selecionados.sort()
                 datas = DesignacoesSalao.gerar_datas_meses(idx_dia, idx_fds, selecionados)
                 if not datas:
                     Messagebox.show_warning("Nenhuma data gerada.", "Atenção", parent=win)
                     return
-                designacoes = DesignacoesSalao.gerar_designacoes(datas)
+                _abrir_impedimentos(selecionados, datas)
+
+            def _gerar_e_popular(datas, impedimentos):
+                designacoes = DesignacoesSalao.gerar_designacoes(datas, impedimentos)
                 _popula_tabela(designacoes)
+
+            def _abrir_impedimentos(selecionados, datas):
+                import calendar as _cal
+                from database import listar_candidatos_salao_ordenados
+
+                # União dos irmãos com permissão de salão (dedup, preserva ordem)
+                irmaos, vistos = [], set()
+                for papel in ("audio_video", "microfone", "indicador"):
+                    for n in listar_candidatos_salao_ordenados(papel):
+                        if n and n not in vistos:
+                            vistos.add(n)
+                            irmaos.append(n)
+
+                if not irmaos:
+                    _gerar_e_popular(datas, {})
+                    return
+
+                datas_reuniao = {d["data"] for d in datas}
+                impedimentos = {}          # {nome: set("DD/MM/AAAA")}
+                estado = {"nome": None}    # irmão atualmente selecionado
+
+                imp = ttk.Toplevel(win)
+                imp.title("Impedimentos dos Irmãos")
+                imp.grab_set()
+                imp.geometry("820x600")
+
+                ttk.Label(imp, text="Algum irmão tem impedimento em alguns dias?",
+                          font=("Helvetica", 13, "bold"), bootstyle="primary").pack(
+                    anchor=W, padx=20, pady=(15, 2))
+                ttk.Label(imp, text="Selecione o irmão à esquerda e marque no calendário "
+                          "os dias em que ele NÃO pode trabalhar.",
+                          bootstyle="secondary").pack(anchor=W, padx=20, pady=(0, 10))
+
+                corpo = ttk.Frame(imp, padding=(20, 0))
+                corpo.pack(fill=BOTH, expand=YES)
+
+                # ── Esquerda: lista de irmãos ──────────────────────────────
+                esq = ttk.LabelFrame(corpo, text="Irmãos", padding=5)
+                esq.pack(side=LEFT, fill=Y, padx=(0, 12))
+                lst = ttk.Treeview(esq, show="tree", height=22, bootstyle="primary")
+                lst.column("#0", width=210, anchor=W)
+                sb_l = ttk.Scrollbar(esq, orient="vertical", command=lst.yview,
+                                     bootstyle="primary-round")
+                sb_l.pack(side=RIGHT, fill=Y)
+                lst.configure(yscrollcommand=sb_l.set)
+                lst.pack(side=LEFT, fill=Y)
+                for n in irmaos:
+                    lst.insert("", "end", iid=n, text=n)
+
+                # ── Direita: calendário rolável ────────────────────────────
+                dir_ = ttk.LabelFrame(corpo, text="Calendário", padding=5)
+                dir_.pack(side=LEFT, fill=BOTH, expand=YES)
+                canvas = tk.Canvas(dir_, highlightthickness=0)
+                sb_c = ttk.Scrollbar(dir_, orient="vertical", command=canvas.yview,
+                                     bootstyle="primary-round")
+                cal_frame = ttk.Frame(canvas)
+                cal_frame.bind("<Configure>",
+                               lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+                canvas.create_window((0, 0), window=cal_frame, anchor="nw")
+                canvas.configure(yscrollcommand=sb_c.set)
+                sb_c.pack(side=RIGHT, fill=Y)
+                canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+
+                MESES_LOCAL = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",
+                               6:"Junho",7:"Julho",8:"Agosto",9:"Setembro",
+                               10:"Outubro",11:"Novembro",12:"Dezembro"}
+                dias_botoes = []   # [(btn, "DD/MM/AAAA", is_reuniao)]
+
+                def _estilo_dia(data_str, is_reuniao, marcado):
+                    if marcado:
+                        return "danger"
+                    return "info-outline" if is_reuniao else "secondary-outline"
+
+                def _repintar():
+                    nome = estado["nome"]
+                    marcados = impedimentos.get(nome, set())
+                    for btn, data_str, is_reuniao in dias_botoes:
+                        st = "disabled" if nome is None else "normal"
+                        btn.configure(bootstyle=_estilo_dia(data_str, is_reuniao,
+                                                            data_str in marcados),
+                                      state=st)
+
+                def _toggle(data_str):
+                    nome = estado["nome"]
+                    if nome is None:
+                        return
+                    s = impedimentos.setdefault(nome, set())
+                    if data_str in s:
+                        s.discard(data_str)
+                    else:
+                        s.add(data_str)
+                    if not s:
+                        impedimentos.pop(nome, None)
+                    lst.item(nome, text=f"{nome} ({len(s)})" if s else nome)
+                    _repintar()
+
+                cal = _cal.Calendar(firstweekday=6)  # domingo primeiro
+                header = ["D", "S", "T", "Q", "Q", "S", "S"]
+                for (ano, mes) in selecionados:
+                    mf = ttk.LabelFrame(cal_frame,
+                                        text=f"{MESES_LOCAL[mes]} {ano}", padding=6)
+                    mf.pack(fill=X, pady=6, padx=2)
+                    for c, h in enumerate(header):
+                        ttk.Label(mf, text=h, width=4, anchor=CENTER,
+                                  bootstyle="secondary").grid(row=0, column=c, padx=1, pady=1)
+                    for r, semana in enumerate(cal.monthdayscalendar(ano, mes), start=1):
+                        for c, dia in enumerate(semana):
+                            if dia == 0:
+                                continue
+                            data_str = f"{dia:02d}/{mes:02d}/{ano}"
+                            is_reuniao = data_str in datas_reuniao
+                            b = ttk.Button(mf, text=str(dia), width=4,
+                                           bootstyle=_estilo_dia(data_str, is_reuniao, False),
+                                           command=lambda d=data_str: _toggle(d))
+                            b.grid(row=r, column=c, padx=1, pady=1)
+                            b.configure(state="disabled")
+                            dias_botoes.append((b, data_str, is_reuniao))
+
+                def _on_sel(_evt=None):
+                    sel = lst.selection()
+                    estado["nome"] = sel[0] if sel else None
+                    _repintar()
+                lst.bind("<<TreeviewSelect>>", _on_sel)
+
+                # ── Botões ─────────────────────────────────────────────────
+                bf = ttk.Frame(imp)
+                bf.pack(fill=X, padx=20, pady=12)
+
+                def _confirmar():
+                    imp.destroy()
+                    _gerar_e_popular(datas, impedimentos)
+
+                def _pular():
+                    imp.destroy()
+                    _gerar_e_popular(datas, {})
+
+                ttk.Button(bf, text="Gerar", bootstyle="success",
+                           command=_confirmar).pack(side=LEFT, padx=(0, 10))
+                ttk.Button(bf, text="Gerar sem impedimentos", bootstyle="secondary",
+                           command=_pular).pack(side=LEFT, padx=(0, 10))
+                ttk.Button(bf, text="Cancelar", bootstyle="danger-outline",
+                           command=imp.destroy).pack(side=RIGHT)
+
+                imp.update_idletasks()
+                x = win.winfo_x() + (win.winfo_width() - imp.winfo_width()) // 2
+                y = win.winfo_y() + (win.winfo_height() - imp.winfo_height()) // 2
+                imp.geometry(f"+{max(x, 0)}+{max(y, 0)}")
             btn_f = ttk.Frame(dlg)
             btn_f.pack(padx=20, pady=15)
             ttk.Button(btn_f, text="Gerar", bootstyle="success",

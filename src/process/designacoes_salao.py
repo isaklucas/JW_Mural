@@ -132,14 +132,19 @@ class DesignacoesSalao:
         return datas
 
     @staticmethod
-    def gerar_designacoes(semanas_info):
+    def gerar_designacoes(semanas_info, impedimentos=None):
         """
         Gera designações automáticas para cada data em semanas_info.
         Garante que nenhum irmão tenha duas funções no mesmo dia.
+        impedimentos: {nome: set("DD/MM/AAAA")} — irmão não é designado nessas datas.
         """
+        impedimentos = impedimentos or {}
         av  = listar_candidatos_salao_ordenados("audio_video")
         mic = listar_candidatos_salao_ordenados("microfone")
         ind = listar_candidatos_salao_ordenados("indicador")
+
+        def disp(lista, data):
+            return [n for n in lista if data not in impedimentos.get(n, set())]
 
         result = []
         ultimo_mic = None
@@ -147,18 +152,22 @@ class DesignacoesSalao:
 
         for i, s in enumerate(semanas_info):
             assigned = set()
+            data = s["data"]
+            av_f  = disp(av, data)
+            mic_f = disp(mic, data)
+            ind_f = disp(ind, data)
 
-            audio = DesignacoesSalao.pick_one(av, i, assigned)
+            audio = DesignacoesSalao.pick_one(av_f, i, assigned)
             DesignacoesSalao.add_assigned(audio, assigned)
 
-            video = DesignacoesSalao.pick_one(av, i + max(len(av) // 2, 1), assigned)
+            video = DesignacoesSalao.pick_one(av_f, i + max(len(av_f) // 2, 1), assigned)
             DesignacoesSalao.add_assigned(video, assigned)
 
-            microfone = DesignacoesSalao.pick_two(mic, i, assigned, ultimo_mic)
+            microfone = DesignacoesSalao.pick_two(mic_f, i, assigned, ultimo_mic)
             DesignacoesSalao.add_assigned(microfone, assigned)
             ultimo_mic = frozenset(n.strip() for n in microfone.split("/") if n.strip())
 
-            indicadores = DesignacoesSalao.pick_two(ind, i, assigned, ultimo_ind)
+            indicadores = DesignacoesSalao.pick_two(ind_f, i, assigned, ultimo_ind)
             ultimo_ind = frozenset(n.strip() for n in indicadores.split("/") if n.strip())
 
             result.append({
