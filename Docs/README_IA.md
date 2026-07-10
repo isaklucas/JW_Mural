@@ -7,7 +7,12 @@ Este documento fornece especificações técnicas detalhadas do sistema JW Mural
 ```mermaid
 graph TB
     subgraph UI["Interface Gráfica"]
-        Layout[layout.py<br/>ModernApp]
+        Layout[layout.py<br/>ModernApp: menu + bootstrap]
+        Views[views/*_view.py<br/>telas como mixins]
+    end
+
+    subgraph Services["Camada de Serviço"]
+        Svc[services/*_service.py<br/>única UI que fala com o banco]
     end
     
     subgraph Process["Processamento"]
@@ -34,9 +39,11 @@ graph TB
         Word[Microsoft Word<br/>Templates]
     end
     
-    Layout -->|Chama| S140
-    Layout -->|Gerencia| DBOps
-    Layout -->|Mostra| Janelas
+    Layout -->|Herda telas| Views
+    Views -->|Chama| S140
+    Views -->|Acessa dados via| Svc
+    Views -->|Mostra| Janelas
+    Svc -->|Delegam a| DBOps
     
     S140 -->|Extrai dados| WebScrap
     S140 -->|Salva| DBOps
@@ -293,29 +300,22 @@ erDiagram
 
 ## 📦 Módulos e Responsabilidades
 
-### `layout.py` - Interface Gráfica Principal
+### `layout.py` - Menu Principal + Bootstrap
 
-**Classe Principal:** `ModernApp`
+**Classe Principal:** `ModernApp` (~320 linhas — só menu e inicialização)
 
-**Responsabilidades:**
-- Interface gráfica usando ttkbootstrap
-- Navegação entre funcionalidades
-- Gerenciamento de janelas e modais
-- Integração com módulos de processamento
+`ModernApp` **herda as telas** de mixins em `views/`:
+`class ModernApp(PublicadoresMixin, HistoricoMixin, ReunioesMixin, DesignacoesMixin, DashboardsMixin, ConfigMixin)`.
 
-**Métodos Principais:**
-- `__init__(root)`: Inicializa interface
-- `criar_quadro_de_anuncio()`: Janela de criação de reunião
-- `publicadores()`: Gerenciamento de publicadores
-- `historico()`: Histórico de reuniões
-- `historico_publicadores()`: Histórico individual
-- `dashboards()`: Visualizações estatísticas
+**Responsabilidades:** montar o menu (cards clicáveis via `views/components.criar_card`), instanciar a janela ttkbootstrap, rodar verificações de startup e (no app compilado) checar atualização.
 
-**Dependências:**
-- `ttkbootstrap`: Interface gráfica
-- `process.s140`: Geração de documentos
-- `database.db_operations`: Operações de banco
-- `util.janelas`: Diálogos modais
+### `views/` - Telas (uma por mixin)
+
+Cada método de tela vive num mixin próprio; `layout.py` os combina em `ModernApp`. Métodos: `criar_quadro_de_anuncio`, `criar_reuniao_final_semana` (`reunioes_view`); `publicadores`, `historico_publicadores` (`publicadores_view`); `historico`, `historico_final_semana` (`historico_view`); `designacoes_salao` (`designacoes_view`); `dashboards` (`dashboards_view`); `abrir_configuracoes` (`config_view`). `components.py` = card clicável; `_shared.py` = imports comuns (inclui os serviços).
+
+### `services/` - Camada de Dados da UI
+
+Única parte da UI que importa `database`/`db_ops`. Singletons: `publicador_service`, `reuniao_service`, `designacao_service`, `dashboard_service`. As telas chamam serviços; **nunca** `db_ops` direto. Ao adicionar operação de banco na UI, exponha um método no serviço.
 
 ### `database/db_operations.py` - Operações de Banco
 
@@ -756,20 +756,24 @@ reuniao = collection.find_one(filtro)
 
 ### Ao Adicionar Features
 
-1. **Novos campos em reuniões:**
+1. **Nova tela / editar tela:**
+   - Editar o mixin em `views/` (uma tela por módulo). Não inchar `layout.py`.
+   - Acesso a dados só via `services/` — a tela **não** importa `database`/`db_ops`.
+
+2. **Novas queries:**
+   - Adicionar método em `DatabaseOperations` e expor no `services/*_service.py` correspondente.
+   - Considerar índices MongoDB; testar.
+
+3. **Novos campos em reuniões:**
    - Atualizar modelo em `salvar_reuniao()`
    - Adicionar em `_atualizar_historico_publicadores()`
    - Atualizar template Word se necessário
 
-2. **Novas queries:**
-   - Adicionar método em `DatabaseOperations`
-   - Considerar índices MongoDB
-   - Testar com dados reais
+4. **Novos diálogos:**
+   - Seguir padrão de `util/janelas.py`; validação de entrada.
+   - **Nunca** passar janela possivelmente destruída como `parent=` de `Messagebox` (quebra o dialog e deixa *grab* pendente). Guardar com `winfo_exists()`.
 
-3. **Novos diálogos:**
-   - Seguir padrão de `util/janelas.py`
-   - Modais bloqueantes
-   - Validação de entrada
+5. **Testes:** rodar `python -m pytest` (offline). Lógica pura nova ganha teste.
 
 ### Debugging
 
@@ -786,15 +790,18 @@ reuniao = collection.find_one(filtro)
 
 ## Mudanças Recentes
 
+- **Decomposição do `layout.py`** (era ~3600 linhas → ~320): telas movidas para mixins em `views/`; `ModernApp` herda de todos.
+- **Camada de serviço** (`services/`): a UI não fala mais com `database`/`db_ops` direto — passa pelos serviços.
+- **Testes** (`tests/`, pytest offline): parser do scraper e designação automática; `database` falso em `sys.modules`.
+- **Scraper robusto** (`webscrapper`): timeout, User-Agent, retry/backoff; aviso quando a estrutura do site muda.
+- **Menu**: cards inteiros clicáveis (sem botão "ACESSAR"), com faixa de cor por categoria.
+- **Fix**: salvar reunião manual não crasha nem deixa *grab* pendente (que travava cliques em outros modais).
 - **Seleção automática de publicadores:** `gerarComPublicadores` ativa critérios por parte (Ancião, SM, permissões, sexo) e prioriza tempo sem fazer.
-- **Modal de revisão:** `mostrar_resumo_e_editar_publicadores` permite editar publicadores antes de gerar o documento.
-- **Campos de publicador:** `sexo`, `permissoes` (parte_escola, oracao, leitura_livro), `Anciao`, `Servo_Ministerial`.
-- **Partes da escola com 2 publicadores:** `selecionar_dois_publicadores_escola` garante mesmo sexo.
-- **Estudo de congregação:** `selecionar_estudo_congregacao` para Ancião ou ajudante com permissão.
+- **Campos de publicador:** `sexo`, `permissoes` (parte_escola, oracao, leitura_livro, leitura_sentinela, presidente_final_semana, audio_video, indicador, microfone), `Anciao`, `Servo_Ministerial`.
 
 ---
 
-**Versão:** 1.1  
-**Última atualização:** 2026  
+**Versão:** 1.3  
+**Última atualização:** 2026-07  
 **Para uso por:** Assistentes de IA e desenvolvedores
 

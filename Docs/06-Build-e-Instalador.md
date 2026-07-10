@@ -71,15 +71,21 @@ O `JW_Mural.iss` lê esse arquivo via ISPP (`FileOpen`/`FileRead`) e o app lê o
 mesmo `VERSION.txt` (bundlado pelo PyInstaller e copiado ao lado do exe) via
 `src/version.py` (`__version__`). Não editar a versão em mais nenhum lugar.
 
-### Adicionar arquivos ao bundle
-Editar `JW_Mural.spec`, seção `datas`:
+### Adicionar arquivos/pacotes ao bundle
+Editar `JW_Mural.spec`. Pacotes Python de `src/` entram em `datas` **e** `hiddenimports` (padrão de `database`/`process`/`util`/`views`/`services`):
 ```python
 datas=[
     ('assets', 'assets'),
+    ('src/views', 'views'),
+    ('src/services', 'services'),
     ('Templates', 'Templates'),
     # adicionar aqui
 ],
+hiddenimports=[
+    # 'views.publicadores_view', 'services.publicador_service', ...
+],
 ```
+`build.bat` e `JW_Mural.iss` não precisam mudar — o `.iss` empacota `dist\JW_Mural\*` recursivamente.
 
 ### Diretório de instalação padrão
 Editar `JW_Mural.iss`:
@@ -109,11 +115,18 @@ em `src/util/updater.py`).
 
 ### Publicar uma nova versão
 
-1. Editar `VERSION.txt` (ex.: `1.1`) e commitar.
+**Recomendado:** usar a skill `nova-versao` (pipeline automatizada) — ver `.claude/skills/nova-versao/`:
+```
+powershell -ExecutionPolicy Bypass -File .claude/skills/nova-versao/release.ps1 -Version <X.Y> -Notes "<resumo>"
+```
+Ela faz: preflight → bump `VERSION.txt` → commit `chore: release vX.Y` → `build.bat` → `git tag` + push → `gh release create` com o `Setup_JW_Mural.exe` anexado.
+
+**Manual** (equivalente, passo a passo):
+1. Editar `VERSION.txt` (ex.: `1.3`) e commitar.
 2. Rodar `build.bat` — gera `installer_output\Setup_JW_Mural.exe` já com a nova versão.
 3. Criar o release no GitHub anexando o instalador (o asset **precisa** se chamar `Setup_JW_Mural.exe`):
    ```bash
-   gh release create v1.1 installer_output/Setup_JW_Mural.exe -t "v1.1" -n "Notas da versão"
+   gh release create v1.3 installer_output/Setup_JW_Mural.exe -t "v1.3" -n "Notas da versão"
    ```
 4. Pronto: todos os apps instalados detectam e oferecem a atualização na próxima abertura.
 

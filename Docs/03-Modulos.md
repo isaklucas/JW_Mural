@@ -4,7 +4,33 @@ Descrição das pastas e arquivos principais do projeto.
 
 ## layout.py
 
-Interface gráfica principal e ponto de entrada. Contém a classe `ModernApp`, que monta a janela com cards: Criar Reunião Meio de Semana, Criar Reunião Final de Semana, Publicadores, Histórico de Publicadores, Histórico Meio/Final de Semana, Dashboards. Cada card abre a janela ou fluxo correspondente e chama `process.s140`, `process.final_semana` e `database.db_ops`. A execução de `layout.py` cria a janela ttkbootstrap, instancia `ModernApp` e roda as verificações de startup (`util.startup_manager`).
+Ponto de entrada e **menu principal** (~320 linhas). Contém a classe `ModernApp`, que monta a janela com cards (Criar Reunião Meio/Final de Semana, Publicadores, Histórico de Publicadores, Histórico Meio/Final de Semana, Designações Salão, Dashboards) e faz o bootstrap. As telas em si **não** ficam aqui: `ModernApp` as herda de mixins em `views/`. A execução de `layout.py` cria a janela ttkbootstrap, instancia `ModernApp` e roda as verificações de startup (`util.startup_manager`); no app compilado dispara a checagem de atualização.
+
+## views/
+
+Interface — uma tela por módulo, cada uma um *mixin* de `ModernApp`.
+
+- **components.py** — `criar_card`: constrói cada card do menu. O card **inteiro é clicável** (não há botão "ACESSAR"); faixa de cor no topo identifica a categoria; cursor de mão e hover dão o affordance.
+- **_shared.py** — imports compartilhados pelas telas (`from views._shared import *`): ttk/tk, constantes, `Messagebox`, `s140`, `final_semana` e os *serviços*. As telas obtêm o acesso a dados por aqui, não por `database`.
+- **publicadores_view.py** — `PublicadoresMixin`: telas `publicadores` e `historico_publicadores`.
+- **historico_view.py** — `HistoricoMixin`: `historico` e `historico_final_semana`.
+- **reunioes_view.py** — `ReunioesMixin`: `criar_quadro_de_anuncio` (meio de semana) e `criar_reuniao_final_semana`.
+- **designacoes_view.py** — `DesignacoesMixin`: `designacoes_salao` (áudio, vídeo, microfone, indicadores).
+- **dashboards_view.py** — `DashboardsMixin`: `dashboards`.
+- **config_view.py** — `ConfigMixin`: `abrir_configuracoes`.
+
+## services/
+
+Camada de serviço — **única parte da UI que importa `database`/`db_ops`**. As telas chamam estes serviços (singletons) em vez de acessar o banco direto.
+
+- **publicador_service.py** — `publicador_service`: listar, adicionar, excluir, atualizar, buscar_historico, resetar_todo_historico, restaurar_historico.
+- **reuniao_service.py** — `reuniao_service`: listar/buscar/salvar reuniões + variantes `_final_semana`.
+- **designacao_service.py** — `designacao_service`: listar_candidatos, salvar, listar, buscar, excluir.
+- **dashboard_service.py** — `dashboard_service`: contagens para os gráficos.
+
+## tests/
+
+Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo `database` falso em `sys.modules` antes dos imports. `test_webscrapper.py` (parser via fixtures HTML) e `test_designacao.py` (designação automática). Rodar: `python -m pytest`. Deps de dev em `requirements-dev.txt`.
 
 ## database/
 
@@ -22,7 +48,7 @@ Interface gráfica principal e ponto de entrada. Contém a classe `ModernApp`, q
 
 **final_semana.py** — Reunião final de semana: extração de títulos da Sentinela (webscrapper), seleção automática de presidente (anciãos/servos) e leitor (leitura_sentinela), modais para dirigente e dados (tema, orador, presidente, leitor) com autocomplete de temas a partir de assets/temas_discursos.json, geração de dois Word (Sentinela e Oradores) a partir dos templates em Templates/, salvamento em documentosCriados/ e em reunioes_final_semana.
 
-**webscrapper.py** — Requisições ao wol.jw.org e parsing (BeautifulSoup); extração de títulos do estudo da Sentinela na página de meetings. Usado por s140 e final_semana.
+**webscrapper.py** — Requisições ao wol.jw.org e parsing (BeautifulSoup); extração de títulos do estudo da Sentinela na página de meetings. Usado por s140 e final_semana. Rede robusta: sessão HTTP com `timeout`, `User-Agent` e retry/backoff; falha de rede vira retorno `None` (sem travar a UI) e há aviso em log quando a estrutura do site muda (0 cards).
 
 ## util/
 

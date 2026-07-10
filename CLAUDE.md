@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation — read first
+
+**`docs/` is the source of truth for how to work in this repo. Consult it before non-trivial changes and keep it updated when architecture changes.**
+
+- **`docs/AGENTS.md`** — start here: entry point, module map, and the "Regras de Ouro"/gotchas for modifying code.
+- `docs/01-Arquitetura.md` — layers (UI in `views/`, `services/`, process, database, util, tests).
+- `docs/03-Modulos.md` — what each folder/file does.
+- `docs/04-Fluxos-Principais.md` — step-by-step flows.
+- `docs/05-Interface-e-Telas.md` — screens and UX.
+- `docs/06-Build-e-Instalador.md` — build, versioning, auto-update.
+- `docs/README_IA.md` — deep reference (data models, queries, diagrams).
+
 ## Commands
 
 ```bash

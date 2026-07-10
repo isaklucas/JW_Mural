@@ -5,6 +5,10 @@ description: Publica uma nova versão do JW Mural para os usuários receberem vi
 
 # Publicar nova versão do JW Mural
 
+> **Como o projeto funciona:** a fonte de verdade é `docs/` (comece por
+> `docs/AGENTS.md`; build/versionamento em `docs/06-Build-e-Instalador.md`).
+> Consulte antes de mexer no pipeline e mantenha atualizado.
+
 Pipeline de release. O app instalado checa `releases/latest` no GitHub a cada boot
 (`src/util/updater.py`) e baixa o asset `Setup_JW_Mural.exe` se a tag remota for
 numericamente maior que o `VERSION.txt` local. Logo: uma release só chega aos

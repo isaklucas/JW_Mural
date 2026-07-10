@@ -4,7 +4,7 @@ Resumo das telas e ações principais do usuário.
 
 ## Tela principal
 
-Menu com cards de acesso às funcionalidades: Criar Reunião de Meio de Semana, Criar Reunião Final de Semana, Publicadores, Histórico de Publicadores, Histórico Reunião Meio de Semana, Histórico Reunião Final de Semana, Dashboards. Cada card tem botão "ACESSAR" que abre a janela correspondente.
+Menu com cards de acesso às funcionalidades: Criar Reunião de Meio de Semana, Criar Reunião Final de Semana, Publicadores, Histórico de Publicadores, Histórico Reunião Meio de Semana, Histórico Reunião Final de Semana, Designações Salão, Dashboards. **Cada card inteiro é clicável** e abre a janela correspondente (não há botão "ACESSAR"): uma faixa de cor no topo identifica a categoria e o cursor de mão indica o clique. O ícone de engrenagem abre Configurações.
 
 ## Criar Reunião de Meio de Semana
 
@@ -16,7 +16,7 @@ Formulário com: URL da página de meetings, nome do arquivo, checkboxes para se
 
 ## Publicadores
 
-Lista de publicadores com busca. Botões: Adicionar Publicador, Editar, Excluir. Formulário de adicionar/editar: nome, batizado, sexo, Ancião, Servo Ministerial, permissões (parte_escola, oração, leitura_livro, leitura_sentinela, presidente_final_semana). Exclusão com confirmação.
+Lista de publicadores com busca. Botões: Adicionar Publicador, Editar, Excluir. Formulário de adicionar/editar: nome, batizado (toggle), sexo, Ancião, Servo Ministerial, permissões (parte_escola, oração, leitura_livro, leitura_sentinela, presidente_final_semana e as de salão: audio_video, indicador, microfone). Exclusão com confirmação. Operações de banco via `publicador_service`.
 
 ## Histórico Reunião Meio de Semana
 
@@ -30,6 +30,10 @@ Filtros por ano e mês. Lista de reuniões de final de semana; ao clicar, exibe 
 
 Busca por nome. Lista de publicadores; ao selecionar um, exibe o histórico de participações (parte e data).
 
+## Designações Salão
+
+Gerencia designações de áudio, vídeo, microfone e indicadores por mês. Geração automática (respeitando impedimentos e balanceando por quem fez menos), edição manual na tabela, salvar/excluir por mês e exportar `.docx`. Dados via `designacao_service`.
+
 ## Dashboards
 
-Dois modos: Participações por Publicador (gráfico de barras) e Participações por Reunião (agrupado por mês). Filtro opcional por parte no dashboard de participações. Gráficos gerados com matplotlib na própria janela.
+Três modos: Participações por Publicador (barras), Participações por Reunião (agrupado por mês) e Designações de Salão (tabela). Filtro opcional por parte. Gráficos com matplotlib na própria janela; contagens via `dashboard_service`.

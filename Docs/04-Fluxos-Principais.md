@@ -2,6 +2,15 @@
 
 Descrição dos fluxos de uso mais importantes e onde eles estão implementados no código.
 
+> **Nota de arquitetura (atual):** onde os passos abaixo dizem "layout chama
+> `db_ops.X()`", hoje a lógica vive na **tela em `views/`** (mixin de `ModernApp`)
+> e o acesso ao banco passa pela **camada de serviço** (`services/`): p.ex.
+> `db_ops.getAllPub()` → `publicador_service.listar()`,
+> `db_ops.salvar_reuniao()` → `reuniao_service.salvar()`,
+> `db_ops.contar_participacoes_por_parte()` → `dashboard_service.contar_participacoes_por_parte()`.
+> As telas não importam `database`/`db_ops` diretamente. Os nomes `db_ops.*`
+> abaixo indicam a operação de banco final (dentro do serviço).
+
 ---
 
 ## 1. Criar Reunião de Meio de Semana
