@@ -1,8 +1,12 @@
 <#
   release.ps1 — Pipeline completa de release do JW Mural.
 
-  Uso:
-    powershell -ExecutionPolicy Bypass -File release.ps1 -Version 1.2 -Notes "texto das notas"
+  Uso (executa o script LOCAL direto; nao usar -ExecutionPolicy Bypass):
+    & .claude/skills/nova-versao/release.ps1 -Version 1.3 -Notes "texto das notas"
+
+  Obs: com a policy CurrentUser = RemoteSigned (padrao) o script local roda sem
+  Bypass. Se (e so se) a policy for Restricted, rode antes, na MESMA sessao:
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 
   Passos:
     1. Preflight: gh instalado + autenticado, ISCC presente, .venv presente, arvore de trabalho limpa.
@@ -37,6 +41,18 @@ Set-Location $RepoRoot
 # ── Preflight ─────────────────────────────────────────────────────────────
 Step "Preflight"
 
+# gh costuma estar instalado mas fora do PATH da sessao (winget). Procura nos
+# caminhos padrao e adiciona ao PATH antes de desistir.
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    $ghCandidatos = @(
+        "$env:ProgramFiles\GitHub CLI",
+        "${env:ProgramFiles(x86)}\GitHub CLI",
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links"
+    )
+    foreach ($dir in $ghCandidatos) {
+        if (Test-Path (Join-Path $dir "gh.exe")) { $env:Path += ";$dir"; break }
+    }
+}
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     Fail "GitHub CLI (gh) nao encontrado. Instale com:  winget install GitHub.cli  e depois:  gh auth login"
 }

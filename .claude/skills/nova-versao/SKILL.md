@@ -25,10 +25,18 @@ usuários se (a) a tag for maior e (b) tiver o asset com esse nome exato.
    mensagem descritiva antes de rodar o script. NÃO bumpar VERSION.txt na mão — o
    script faz isso.
 
-3. **Rodar a pipeline** a partir da raiz do repo:
+3. **Rodar a pipeline** (na raiz do repo, via ferramenta PowerShell). Executar o
+   script LOCAL com o call operator — **NÃO** usar `powershell -ExecutionPolicy
+   Bypass` (o `-ExecutionPolicy Bypass` é sinalizado como enfraquecimento de
+   segurança e faz o auto-mode bloquear o comando):
+   ```powershell
+   & .claude/skills/nova-versao/release.ps1 -Version <X.Y> -Notes "<resumo das mudanças>"
    ```
-   powershell -ExecutionPolicy Bypass -File .claude/skills/nova-versao/release.ps1 -Version <X.Y> -Notes "<resumo das mudanças>"
-   ```
+   Com a policy padrão do usuário (CurrentUser = RemoteSigned) o script local roda
+   sem Bypass. Só se a policy for Restricted, rodar antes, na MESMA chamada:
+   `Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned; & .claude/...`.
+   O `gh` é localizado pelo próprio script se estiver fora do PATH.
+
    O script faz: preflight → bump `VERSION.txt` → commit `chore: release vX.Y` →
    `build.bat` → `git tag vX.Y` + push do commit e da tag → `gh release create` com
    o instalador anexado. Aborta em qualquer falha antes de publicar.
@@ -45,6 +53,8 @@ incerto, derivar de `git log <tag-anterior>..HEAD --oneline`.
 
 - **GitHub CLI autenticado.** Se faltar: `winget install GitHub.cli`, depois o
   usuário roda `! gh auth login` (login é interativo — não dá para automatizar).
+  Se instalado mas fora do PATH da sessão, o próprio `release.ps1` o localiza
+  (`C:\Program Files\GitHub CLI` etc.) — não precisa ajustar PATH na mão.
 - **Inno Setup 6** em `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`
   (`winget install JRSoftware.InnoSetup`).
 - **`.venv`** presente na raiz (usada pelo `build.bat` para o PyInstaller).
