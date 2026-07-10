@@ -6,18 +6,36 @@ Primeiro passo do SDD 03: extrair a construção de widgets do god object
 principal + o botão "ACESSAR". Sem lógica de negócio, sem acesso a banco —
 só apresentação, então importável sem MongoDB.
 
-Nota: o código antigo usava `tk.Button` com `bg=` manual por cor. Sob um tema
-ttkbootstrap (o app real) o próprio ttkbootstrap re-tematiza todo `tk.Button`
-para a cor `primary`, então aquelas cores por-estilo (info/success/danger…)
-NUNCA apareciam — todos os botões ficavam azuis. Trocado por `ttk.Button` com
-`bootstyle=`, que aplica a cor certa de fato e ganha hover nativo do tema.
+Botão ACESSAR — dois problemas do ttkbootstrap resolvidos juntos:
+  1. `ttk.Button` às vezes NÃO renderiza texto no Windows (por isso o autor
+     original usava `tk.Button`).
+  2. Sob um tema, o ttkbootstrap re-tematiza todo `tk.Button` para a cor
+     `primary` — mas só o valor passado NO CONSTRUTOR; um `.configure(bg=...)`
+     DEPOIS de criado prevalece.
+Solução: criar `tk.Button` (texto aparece) e aplicar cor/hover via `.configure`
+após a criação.
 """
+import tkinter as tk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import BOTH, YES, X, CENTER, BOTTOM
 
-# Padding do botão ACESSAR: (horizontal, vertical). Vertical maior = botão mais
-# alto e com mais respiro que a versão anterior.
-_BTN_PADDING = (24, 22)
+# Fundo (bg) e texto (fg) por bootstyle.
+_CORES = {
+    "primary": ("#0d6efd", "white"),
+    "info": ("#0dcaf0", "black"),
+    "success": ("#198754", "white"),
+    "warning": ("#ffc107", "black"),
+    "secondary": ("#6c757d", "white"),
+    "danger": ("#dc3545", "white"),
+}
+
+
+def _escurecer(hex_cor, fator=0.14):
+    """Versão mais escura de uma cor #rrggbb (para hover)."""
+    hex_cor = hex_cor.lstrip("#")
+    r, g, b = (int(hex_cor[i:i + 2], 16) for i in (0, 2, 4))
+    r, g, b = (round(v * (1 - fator)) for v in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def criar_card(parent, title, description, style, command, row, col, columnspan=1):
@@ -61,14 +79,31 @@ def criar_card(parent, title, description, style, command, row, col, columnspan=
     button_frame = ttk.Frame(content_frame, bootstyle="light")
     button_frame.pack(side=BOTTOM, fill=X, pady=(10, 0))
 
-    access_button = ttk.Button(
+    bg, fg = _CORES.get(style, ("#0d6efd", "white"))
+    bg_hover = _escurecer(bg)
+
+    access_button = tk.Button(
         button_frame,
-        text="ACESSAR  ➜",
-        bootstyle=style,          # cor por-estilo + hover nativo do tema
+        text="ACESSAR",
+        font=("Segoe UI", 13, "bold"),
         cursor="hand2",
         command=command,
-        padding=_BTN_PADDING,     # botão mais alto
+        relief="flat",
+        bd=0,
+        highlightthickness=0,
+        height=2,      # 2 linhas de texto de altura — não fica fino
+        pady=10,
     )
-    access_button.pack(anchor=CENTER, fill=X, padx=20)
+    # Cor DEPOIS de criar: sob tema ttkbootstrap o bg do construtor é ignorado.
+    access_button.configure(
+        bg=bg, fg=fg,
+        activebackground=bg_hover, activeforeground=fg,
+        disabledforeground=fg,
+    )
+    access_button.pack(anchor=CENTER, fill=X, padx=20, ipady=6)
+
+    # Hover: escurece ao passar o mouse, volta ao sair.
+    access_button.bind("<Enter>", lambda e: access_button.configure(bg=bg_hover))
+    access_button.bind("<Leave>", lambda e: access_button.configure(bg=bg))
 
     return card
