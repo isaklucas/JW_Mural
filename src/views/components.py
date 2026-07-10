@@ -3,30 +3,25 @@ Componentes de UI reutilizáveis.
 
 Primeiro passo do SDD 03: extrair a construção de widgets do god object
 `ModernApp` (layout.py) para módulos próprios. Aqui vive o card do menu
-principal + o botão "ACESSAR". Sem lógica de negócio, sem acesso a banco —
-só apresentação, então importável sem MongoDB.
+principal. Sem lógica de negócio, sem acesso a banco — só apresentação, então
+importável sem MongoDB.
 
-Botão ACESSAR — dois problemas do ttkbootstrap resolvidos juntos:
-  1. `ttk.Button` às vezes NÃO renderiza texto no Windows (por isso o autor
-     original usava `tk.Button`).
-  2. Sob um tema, o ttkbootstrap re-tematiza todo `tk.Button` para a cor
-     `primary` — mas só o valor passado NO CONSTRUTOR; um `.configure(bg=...)`
-     DEPOIS de criado prevalece.
-Solução: criar `tk.Button` (texto aparece) e aplicar cor/hover via `.configure`
-após a criação.
+O card INTEIRO é clicável (não há botão "ACESSAR"): clicar em qualquer ponto
+navega para a área correspondente. Uma faixa colorida no topo dá a identidade de
+cor de cada card (o que o botão fazia antes).
 """
 import tkinter as tk
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import BOTH, YES, X, CENTER, BOTTOM
+from ttkbootstrap.constants import BOTH, YES, X, CENTER, TOP
 
-# Fundo (bg) e texto (fg) por bootstyle.
+# Cor da faixa por bootstyle.
 _CORES = {
-    "primary": ("#0d6efd", "white"),
-    "info": ("#0dcaf0", "black"),
-    "success": ("#198754", "white"),
-    "warning": ("#ffc107", "black"),
-    "secondary": ("#6c757d", "white"),
-    "danger": ("#dc3545", "white"),
+    "primary": "#0d6efd",
+    "info": "#0dcaf0",
+    "success": "#198754",
+    "warning": "#ffc107",
+    "secondary": "#6c757d",
+    "danger": "#dc3545",
 }
 
 
@@ -39,14 +34,16 @@ def _escurecer(hex_cor, fator=0.14):
 
 
 def criar_card(parent, title, description, style, command, row, col, columnspan=1):
-    """Monta um card do menu principal com título, descrição e botão ACESSAR.
+    """Monta um card do menu principal — clicável por inteiro.
 
-    `parent` é o frame container (antes: self.cards_frame). Não guarda estado —
-    devolve o card criado caso o chamador queira referência.
-    `style` é um bootstyle ("primary", "info", "success", "warning",
-    "secondary", "danger") aplicado ao botão.
+    `parent` é o frame container (antes: self.cards_frame). `style` é um bootstyle
+    ("primary", "info", "success", "warning", "secondary", "danger") usado na
+    faixa de cor. `command` dispara ao clicar em qualquer ponto do card.
     """
-    card = ttk.Frame(parent, bootstyle="light", padding=20)
+    cor = _CORES.get(style, "#0d6efd")
+    cor_hover = _escurecer(cor)
+
+    card = ttk.Frame(parent, bootstyle="light", padding=0)
     card.grid(row=row, column=col, columnspan=columnspan,
               padx=10, pady=10, sticky="nsew")
 
@@ -55,7 +52,11 @@ def criar_card(parent, title, description, style, command, row, col, columnspan=
         parent.grid_columnconfigure(c, weight=1)
     parent.grid_rowconfigure(row, weight=1)
 
-    content_frame = ttk.Frame(card, bootstyle="light")
+    # Faixa de cor no topo (identidade da categoria). tk.Frame p/ controlar bg.
+    faixa = tk.Frame(card, height=6, bg=cor)
+    faixa.pack(side=TOP, fill=X)
+
+    content_frame = ttk.Frame(card, bootstyle="light", padding=20)
     content_frame.pack(fill=BOTH, expand=YES)
 
     title_label = ttk.Label(
@@ -74,36 +75,33 @@ def criar_card(parent, title, description, style, command, row, col, columnspan=
         bootstyle="secondary",
         justify="center",
     )
-    desc_label.pack(anchor=CENTER, pady=(0, 20), fill=X)
+    desc_label.pack(anchor=CENTER, pady=(0, 6), fill=X)
 
-    button_frame = ttk.Frame(content_frame, bootstyle="light")
-    button_frame.pack(side=BOTTOM, fill=X, pady=(10, 0))
-
-    bg, fg = _CORES.get(style, ("#0d6efd", "white"))
-    bg_hover = _escurecer(bg)
-
-    access_button = tk.Button(
-        button_frame,
-        text="ACESSAR",
-        font=("Segoe UI", 13, "bold"),
-        cursor="hand2",
-        command=command,
-        relief="flat",
-        bd=0,
-        highlightthickness=0,
-        height=2,      # 2 linhas de texto de altura — não fica fino
-        pady=10,
+    dica = ttk.Label(
+        content_frame,
+        text="Clique para abrir  →",
+        font=("Segoe UI", 9),
+        bootstyle="secondary",
+        justify="center",
     )
-    # Cor DEPOIS de criar: sob tema ttkbootstrap o bg do construtor é ignorado.
-    access_button.configure(
-        bg=bg, fg=fg,
-        activebackground=bg_hover, activeforeground=fg,
-        disabledforeground=fg,
-    )
-    access_button.pack(anchor=CENTER, fill=X, padx=20, ipady=6)
+    dica.pack(anchor=CENTER, pady=(10, 0), fill=X)
 
-    # Hover: escurece ao passar o mouse, volta ao sair.
-    access_button.bind("<Enter>", lambda e: access_button.configure(bg=bg_hover))
-    access_button.bind("<Leave>", lambda e: access_button.configure(bg=bg))
+    # --- tornar TODO o card clicável ---
+    alvos = [card, faixa, content_frame, title_label, desc_label, dica]
+
+    def _abrir(_evt=None):
+        command()
+
+    def _enter(_evt=None):
+        faixa.configure(bg=cor_hover, height=10)
+
+    def _leave(_evt=None):
+        faixa.configure(bg=cor, height=6)
+
+    for w in alvos:
+        w.configure(cursor="hand2")
+        w.bind("<Button-1>", _abrir)
+        w.bind("<Enter>", _enter)
+        w.bind("<Leave>", _leave)
 
     return card
