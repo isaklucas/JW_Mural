@@ -1,0 +1,24 @@
+<!--
+  Fixture sintética que reproduz a estrutura que o parser espera de wol.jw.org:
+  <a class="cardLine1Prominent"> contendo <div class="cardLine1">TÍTULO</div>
+  e <div class="cardLine2">Sentinela (Estudo)</div>.
+  IDEAL: substituir por um snapshot REAL de wol.jw.org (baixar 1 página).
+  Se o site mudar o HTML, atualize aqui e o teste do parser acusa a divergência.
+-->
+<html>
+  <body>
+    <div class="pageContent">
+      <!-- card distrator: NÃO é Sentinela (Estudo) -->
+      <a class="cardLine1Prominent" href="/pt/wol/d/r5/lp-t/111">
+        <div class="cardLine1">Reunião do Meio de Semana</div>
+        <div class="cardLine2">Apostila da Reunião Vida e Ministério</div>
+      </a>
+
+      <!-- card alvo: Sentinela (Estudo) -->
+      <a class="cardLine1Prominent" href="/pt/wol/d/r5/lp-t/222">
+        <div class="cardLine1">A alegria de Jeová é a nossa fortaleza</div>
+        <div class="cardLine2">Sentinela (Estudo)</div>
+      </a>
+    </div>
+  </body>
+</html>

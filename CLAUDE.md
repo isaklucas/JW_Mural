@@ -16,9 +16,12 @@ python src/database/init_db.py
 
 # System checks
 python src/util/system_checks.py
+
+# Run tests (offline — não precisa de MongoDB)
+python -m pytest
 ```
 
-No test suite exists. No linter configured.
+Tests em `tests/` (pytest): parser do scraper + designação automática. Rodam offline via um módulo `database` falso injetado em `sys.modules` (`tests/conftest.py`). Deps de dev: `pip install -r requirements-dev.txt`. No linter configured.
 
 ## Architecture
 
@@ -26,7 +29,20 @@ Desktop app (Windows-primary) for managing JW congregation meeting schedules: sc
 
 ### Entry Point
 
-`src/layout.py` — single `ModernApp` class (~3600 lines), ttkbootstrap GUI. Long operations (scraping, doc generation) run in background threads to avoid UI freeze.
+`src/layout.py` (~320 lines) — `ModernApp` class: main menu + bootstrap. ttkbootstrap GUI. Long operations (scraping, doc generation) run in background threads to avoid UI freeze.
+
+`ModernApp` inherits its screens from per-screen **mixins** in `src/views/` (SDD 03 decomposition — the class used to be one ~3600-line file):
+
+- `views/components.py` — `criar_card` (card + ACESSAR button builder).
+- `views/_shared.py` — shared imports for the mixins (`from views._shared import *`).
+- `views/publicadores_view.py` — `PublicadoresMixin` (`publicadores`, `historico_publicadores`).
+- `views/historico_view.py` — `HistoricoMixin` (`historico`, `historico_final_semana`).
+- `views/reunioes_view.py` — `ReunioesMixin` (`criar_quadro_de_anuncio`, `criar_reuniao_final_semana`).
+- `views/designacoes_view.py` — `DesignacoesMixin` (`designacoes_salao`).
+- `views/dashboards_view.py` — `DashboardsMixin` (`dashboards`).
+- `views/config_view.py` — `ConfigMixin` (`abrir_configuracoes`).
+
+The screen mixins never touch `database`/`db_ops` directly — they go through the **service layer** in `src/services/` (`publicador_service`, `reuniao_service`, `designacao_service`, `dashboard_service`), which is the only UI-side code that imports `database`. Add a new DB operation there, not in a view.
 
 ### Modules
 
