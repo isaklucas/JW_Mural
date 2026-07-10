@@ -255,6 +255,9 @@ class HistoricoMixin:
             detalhes_window.grab_set()
         
         def carregar_reunioes():
+            # A árvore pode ter sido destruída (janela fechada durante o fluxo).
+            if not tree.winfo_exists():
+                return
             # Limpar tabela
             for item in tree.get_children():
                 tree.delete(item)
@@ -602,6 +605,20 @@ class HistoricoMixin:
             button_frame_criar.pack(fill=X, pady=(20, 0))
             
             def salvar_reuniao():
+                from ttkbootstrap.dialogs import Messagebox
+
+                def _parent_seguro():
+                    # Janela pode ter sido fechada; nunca passar janela destruída
+                    # como parent (isso quebra o Messagebox e deixa grab pendente,
+                    # travando cliques em modais abertos depois).
+                    for w in (criar_window, historico_window):
+                        try:
+                            if w.winfo_exists():
+                                return w
+                        except Exception:
+                            pass
+                    return None
+
                 try:
                     # Validar data
                     data_str = data_segunda_var.get().strip()
@@ -659,39 +676,40 @@ class HistoricoMixin:
                     
                     # Salvar reunião
                     resultado = reuniao_service.salvar(dados_reuniao)
-                    
+
                     if resultado['success']:
-                        # Recarregar lista de reuniões antes de fechar a janela
-                        carregar_reunioes()
-                        # Mostrar mensagem de sucesso usando a janela pai
-                        from ttkbootstrap.dialogs import Messagebox
+                        # Recarregar a lista só se a árvore ainda existe
+                        try:
+                            carregar_reunioes()
+                        except Exception as e:
+                            logger.warning(f"Falha ao atualizar lista de reuniões: {e}")
                         Messagebox.show_info(
                             f"Reunião criada com sucesso!\nSemana: {semana}\nAno: {ano}",
                             "Sucesso",
-                            parent=historico_window
+                            parent=_parent_seguro()
                         )
-                        criar_window.destroy()
+                        try:
+                            criar_window.destroy()
+                        except Exception:
+                            pass
                     else:
-                        from ttkbootstrap.dialogs import Messagebox
                         Messagebox.show_error(
                             resultado['message'],
                             "Erro ao Salvar",
-                            parent=historico_window
+                            parent=_parent_seguro()
                         )
-                        
+
                 except ValueError as ve:
-                    from ttkbootstrap.dialogs import Messagebox
                     Messagebox.show_error(
                         f"Data inválida. Use o formato DD/MM/AAAA",
                         "Erro de Validação",
-                        parent=historico_window
+                        parent=_parent_seguro()
                     )
                 except Exception as e:
-                    from ttkbootstrap.dialogs import Messagebox
                     Messagebox.show_error(
                         f"Erro ao salvar reunião: {str(e)}",
                         "Erro",
-                        parent=historico_window
+                        parent=_parent_seguro()
                     )
             
             ttk.Button(
