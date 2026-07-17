@@ -115,7 +115,12 @@ em `src/util/updater.py`).
 
 ### Publicar uma nova versão
 
-**Recomendado:** usar a skill `nova-versao` (pipeline automatizada) — ver `.claude/skills/nova-versao/`:
+**Recomendado (automático):** basta mergear um PR de `develop` → `main`. O workflow
+`.github/workflows/release.yml` calcula a próxima versão (maior tag `v*` + 1 no patch,
+ex.: `v1.3` → `v1.3.1`), builda o instalador na nuvem e cria a tag + GitHub Release com
+o `Setup_JW_Mural.exe` anexado. Ver **Pipeline de CI/CD** abaixo.
+
+**Manual/local:** usar a skill `nova-versao` — ver `.claude/skills/nova-versao/`:
 ```
 powershell -ExecutionPolicy Bypass -File .claude/skills/nova-versao/release.ps1 -Version <X.Y> -Notes "<resumo>"
 ```
@@ -129,6 +134,49 @@ Ela faz: preflight → bump `VERSION.txt` → commit `chore: release vX.Y` → `
    gh release create v1.3 installer_output/Setup_JW_Mural.exe -t "v1.3" -n "Notas da versão"
    ```
 4. Pronto: todos os apps instalados detectam e oferecem a atualização na próxima abertura.
+
+## Pipeline de CI/CD (GitHub Actions)
+
+Fluxo de branches: **`feature/**` → `develop` → `main`**. `main` e `develop` são
+protegidas (nunca push direto; PR obrigatório + testes verdes).
+
+```
+push feature/xxx ──> ci.yml (pytest) ──verde──> PR automático p/ develop
+                                                        │
+                                          merge (PR, CI verde exigido)
+                                                        ▼
+                                                     develop
+                                                        │
+                                            PR develop ──> main
+                                                        │  merge
+                                                        ▼
+                                              release.yml (na main):
+                                        versão = maior tag +1 patch → build
+                                        na nuvem → tag vX.Y.Z + Release c/ .exe
+                                                        │
+                                                        ▼
+                                     clientes recebem o update (updater.py)
+```
+
+| Workflow | Gatilho | O que faz |
+|----------|---------|-----------|
+| `.github/workflows/ci.yml` | push (qualquer branch) + PR | Job `pytest` (status check das proteções). Em `feature/**`, se verde, abre PR automático p/ `develop` (job `abrir-pr-develop`). |
+| `.github/workflows/release.yml` | push na `main` (merge do PR develop→main) | Calcula versão, builda instalador (`windows-latest` + Inno via choco), cria tag `vX.Y.Z` + Release com `Setup_JW_Mural.exe`. |
+
+**Versão no release automático:** derivada da **maior git tag** (`v1.3` → `1.3.1`).
+O `VERSION.txt` é escrito no runner durante o build (vai para o instalador e para o
+app). O repo só reflete o bump se existir o secret `RELEASE_PAT` (opcional). Pular um
+release num push específico: incluir `[skip release]` na mensagem do commit.
+
+**Nome do status check** exigido pelas proteções = nome do job **`pytest`**. Se
+renomear o job, atualizar a proteção de branch (`gh api .../branches/{branch}/protection`).
+
+**Regras de ouro:**
+- Nunca `git push` direto na `main`/`develop` — sempre `feature/**` + PR.
+- Bumpar versão manualmente não é necessário: o patch é automático via tag.
+- Para saltar minor/major (ex.: `1.3.x` → `1.4`/`2.0`), criar a tag maior à mão
+  (`git tag v1.4 && git push --tags`) antes/depois do merge — o próximo release
+  parte dela.
 
 ## Troubleshooting
 

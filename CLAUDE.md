@@ -14,6 +14,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/06-Build-e-Instalador.md` — build, versioning, auto-update.
 - `docs/README_IA.md` — deep reference (data models, queries, diagrams).
 
+## Pipeline / branches
+
+Fluxo: **`feature/**` → `develop` → `main`**. `main` e `develop` são protegidas — nunca `git push` direto; sempre criar `feature/**` e abrir PR.
+
+- Push em `feature/**` → `ci.yml` roda pytest; se verde, abre PR automático para `develop`.
+- Merge `develop → main` → `release.yml` calcula a versão (maior tag `v*` + 1 no patch, ex.: `v1.3`→`v1.3.1`), builda o instalador na nuvem e publica a tag + GitHub Release com `Setup_JW_Mural.exe` (clientes auto-atualizam via `src/util/updater.py`).
+- Versão é automática via tag — não precisa bumpar `VERSION.txt` à mão. `[skip release]` na mensagem do commit pula o release. Detalhes em `docs/06-Build-e-Instalador.md`.
+
 ## Commands
 
 ```bash
@@ -33,7 +41,11 @@ python src/util/system_checks.py
 python -m pytest
 ```
 
-Tests em `tests/` (pytest): parser do scraper + designação automática. Rodam offline via um módulo `database` falso injetado em `sys.modules` (`tests/conftest.py`). Deps de dev: `pip install -r requirements-dev.txt`. No linter configured.
+Tests em `tests/` (pytest). Dois estilos, ambos offline:
+- **Unitários** (`tests/test_*.py`): parser do scraper + designação automática. Rodam via um módulo `database` falso injetado em `sys.modules` (`tests/conftest.py`).
+- **Integração da camada de dados** (`tests/db/`): exercitam o `DatabaseOperations` REAL contra um MongoDB em memória (`mongomock`), trocando `pymongo.MongoClient` por `mongomock.MongoClient` no fixture `db_ops` (`tests/db/conftest.py`). Cada teste começa com o banco vazio; o módulo `database` falso é restaurado no teardown para não afetar os testes unitários.
+
+Deps de dev: `pip install -r requirements-dev.txt` (inclui `mongomock`). No linter configured.
 
 ## Architecture
 

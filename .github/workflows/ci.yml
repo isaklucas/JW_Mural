@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+# Cancela runs antigos da mesma branch quando um novo push chega.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Status check exigido pelas proteções de branch (nome = "pytest").
+  # Roda no SHA do push, então o mesmo check aparece verde no PR para develop.
+  pytest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Instalar dependências
+        run: pip install -r requirements-dev.txt
+      - name: Rodar testes
+        run: python -m pytest
+
+  # Ao dar push numa feature/**, se os testes passarem, abre (ou reaproveita) um
+  # PR para develop automaticamente.
+  abrir-pr-develop:
+    needs: pytest
+    if: startsWith(github.ref, 'refs/heads/feature/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Abrir PR para develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          # Idempotente: se já existe um PR aberto desta branch para develop, não cria outro.
+          existente=$(gh pr list --head "$BRANCH" --base develop --state open --json number --jq 'length')
+          if [ "$existente" != "0" ]; then
+            echo "Já existe PR aberto de $BRANCH para develop. Nada a fazer."
+            exit 0
+          fi
+          gh pr create \
+            --base develop \
+            --head "$BRANCH" \
+            --title "feat: $BRANCH" \
+            --body "PR automático aberto pelo CI após os testes passarem no push de \`$BRANCH\`.
+
+          Gerado por .github/workflows/ci.yml." \
+            --label automated || true
