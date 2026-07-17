@@ -2046,10 +2046,29 @@ class DatabaseOperations:
         try:
             if self.db_type != 'mongodb':
                 return {"success": False, "message": "Suportado apenas em MongoDB"}
-            db, _ = self._obter_db_e_collections_mongodb()
+            db, collection_publicadores = self._obter_db_e_collections_mongodb()
             collection = db['designacoes_salao']
             ano = dados.get('ano')
             mes = dados.get('mes')
+
+            # Purga histórico de salão das datas afetadas antes de regravar,
+            # senão editar uma designação já salva duplica/deixa órfãs as entradas antigas.
+            partes_salao = ["Salão - Áudio", "Salão - Vídeo", "Salão - Microfone", "Salão - Indicador"]
+            doc_antigo = collection.find_one({"ano": ano, "mes": mes})
+            datas = {s.get('data', '') for s in dados.get('semanas', []) if s.get('data')}
+            if doc_antigo:
+                datas |= {s.get('data', '') for s in doc_antigo.get('semanas', []) if s.get('data')}
+            if datas:
+                for pub in collection_publicadores.find({}, {"nome": 1, "historico": 1}):
+                    historico = pub.get("historico", [])
+                    novo = [h for h in historico if not (h.get("parte") in partes_salao and h.get("data") in datas)]
+                    if len(novo) != len(historico):
+                        ultima = novo[-1]["data"] if novo else ""
+                        collection_publicadores.update_one(
+                            {"nome": pub["nome"]},
+                            {"$set": {"historico": novo, "ultima_parte": ultima}}
+                        )
+
             dados_doc = {**dados, "ultima_atualizacao": datetime.datetime.now().isoformat()}
             collection.update_one({"ano": ano, "mes": mes}, {"$set": dados_doc}, upsert=True)
             meses_pt = {
