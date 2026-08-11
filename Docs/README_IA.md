@@ -344,6 +344,10 @@ listar_reunioes(ano, semana, limite)   # Listar com filtros
 
 # Histórico
 buscar_historico_publicador(nome)       # Histórico individual
+transferir_historico(origem, destino, atualizar_reunioes=True)
+                                        # Move o histórico de um publicador para outro
+                                        # (mescla sem duplicar parte+data, zera a origem e,
+                                        # por padrão, troca o nome nas reuniões já salvas)
 contar_reunioes_por_publicador()        # Estatísticas
 ```
 
@@ -483,10 +487,9 @@ solicitar_nome_publicador(parte, nomes_publicadores, semana)
   # Suporta busca e seleção múltipla (separado por /)
   # Retorna: String com nome(s) do publicador(es)
 
-verificarInclusaoPublicador(nome, parte, semana)
-  # Diálogo de confirmação quando publicador não existe
-  # Permite adicionar com status de batismo
-  # Retorna: Boolean (True se adicionado)
+# `verificarInclusaoPublicador` foi REMOVIDA: publicador desconhecido passou a ser
+# criado direto por `DatabaseOperations` (batizado=True), sem diálogo — a janela
+# era aberta a partir de threads de background e travava a UI.
 ```
 
 **Características:**

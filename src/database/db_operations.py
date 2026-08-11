@@ -24,9 +24,57 @@ class DatabaseOperations:
                 # Índice para designacoes_salao
                 collection_salao = self.db['designacoes_salao']
                 collection_salao.create_index([("ano", 1), ("mes", 1)], unique=True)
+                # Índice da chave de deduplicação de nome (NÃO único: a base pode
+                # já ter duplicatas antigas, que o usuário resolve via transferência
+                # de histórico + exclusão).
+                self.db.create_index([("nome_chave", 1)])
                 logger.info("Índices criados/verificados com sucesso")
             except Exception as e:
                 logger.error(f"Erro ao criar índices: {str(e)}")
+
+            self._backfill_nome_chave()
+
+    def _backfill_nome_chave(self):
+        """Preenche `nome_chave` nos publicadores gravados antes desse campo existir."""
+        try:
+            for pub in self.db.find({"nome_chave": {"$exists": False}}, {"nome": 1}):
+                self.db.update_one(
+                    {"_id": pub["_id"]},
+                    {"$set": {"nome_chave": util.ComandosUteis.chave_nome(pub.get("nome", ""))}}
+                )
+        except Exception as e:
+            logger.warning(f"Backfill de nome_chave ignorado: {str(e)}")
+
+    def _resolver_nome(self, nome):
+        """Retorna o nome canônico gravado no banco para `nome`, ou None se não existir.
+
+        Casa por igualdade exata e, se não achar, pela chave sem acento/espaço extra —
+        assim "jose  da silva" encontra o publicador "José Da Silva".
+        """
+        if not nome:
+            return None
+        nome_formatado = util.ComandosUteis.normalizar_nome(nome)
+        try:
+            if self.db_type == 'mongodb':
+                pub = self.db.find_one({"nome": nome_formatado}, {"nome": 1})
+                if not pub:
+                    pub = self.db.find_one(
+                        {"nome_chave": util.ComandosUteis.chave_nome(nome)}, {"nome": 1}
+                    )
+                return pub.get("nome") if pub else None
+            else:
+                response = self.db.get_item(Key={"nome": nome_formatado})
+                item = response.get('Item')
+                if item:
+                    return item.get("nome")
+                chave = util.ComandosUteis.chave_nome(nome)
+                for item in self.db.scan().get('Items', []):
+                    if util.ComandosUteis.chave_nome(item.get("nome", "")) == chave:
+                        return item.get("nome")
+                return None
+        except Exception as e:
+            logger.error(f"Erro ao resolver nome '{nome}': {str(e)}")
+            return None
 
     def post(self, nome, batizado, sexo="Masculino", permissoes=None):
         """
@@ -41,8 +89,14 @@ class DatabaseOperations:
         """
         try:
             now = datetime.datetime.now().isoformat()
-            nome = util.ComandosUteis.TitleCase(nome)
-            
+            nome = util.ComandosUteis.normalizar_nome(nome)
+
+            # Não duplicar publicador por causa de acento/espaço extra
+            existente = self._resolver_nome(nome)
+            if existente:
+                logger.info(f"Publicador '{nome}' já existe como '{existente}' — mantendo o registro atual")
+                return existente
+
             # Valores padrão para permissões se não fornecidas
             if permissoes is None:
                 permissoes = {
@@ -66,6 +120,7 @@ class DatabaseOperations:
             
             item = {
                 "nome": nome.strip(),
+                "nome_chave": util.ComandosUteis.chave_nome(nome),
                 "batizado": batizado,
                 "Anciao": False,
                 "Servo_Ministerial": False,
@@ -82,7 +137,9 @@ class DatabaseOperations:
                 self.db.insert_one(item)
             else:
                 self.db.put_item(Item=item)
-                
+
+            return item["nome"]
+
         except Exception as e:
             logger.error(f"Erro ao adicionar publicador: {str(e)}")
             raise
@@ -100,9 +157,9 @@ class DatabaseOperations:
 
     def delete(self, nome):
         try:
-            nome = util.ComandosUteis.TitleCase(nome)
+            nome = self._resolver_nome(nome) or util.ComandosUteis.normalizar_nome(nome)
             logger.info(f"Removendo publicador {nome}")
-            
+
             if self.db_type == 'mongodb':
                 result = self.db.delete_one({"nome": nome.strip()})
                 if result.deleted_count == 0:
@@ -135,18 +192,15 @@ class DatabaseOperations:
         Atualiza a parte de um único publicador
         """
         try:
-            nome = util.ComandosUteis.TitleCase(nome)
+            nome_resolvido = self._resolver_nome(nome)
+            if not nome_resolvido:
+                # Publicador desconhecido: cria direto, sem diálogo (o fluxo pode
+                # estar rodando em thread de background, longe da UI).
+                nome_resolvido = self.post(nome, batizado=True)
+                logger.info(f"Publicador {nome_resolvido} criado automaticamente")
+            nome = nome_resolvido
             logger.info(f"Atualizando publicador {nome}")
-            
-            # Primeiro verifica se o publicador existe
-            if self.db_type == 'mongodb':
-                publicador = self.db.find_one({"nome": nome.strip()})
-                if not publicador:
-                    # Se não existe, chama a função para verificar inclusão
-                    from util.janelas import janelas
-                    janelas.verificarInclusaoPublicador(nome, parte, semana)
-                    return
-                    
+
             ano = datetime.datetime.now().year
             data_participacao = f"{semana} de {ano}"
             
@@ -464,12 +518,17 @@ class DatabaseOperations:
         Atualiza o histórico de um único publicador
         """
         try:
-            nome = util.ComandosUteis.TitleCase(nome)
-            
+            nome_resolvido = self._resolver_nome(nome)
+            if not nome_resolvido:
+                # Publicador desconhecido: cria direto, sem diálogo de confirmação.
+                nome_resolvido = self.post(nome, batizado=True)
+                logger.info(f"Publicador {nome_resolvido} criado automaticamente")
+            nome = nome_resolvido
+
             if self.db_type == 'mongodb':
                 # Verificar se o publicador existe
                 publicador = self.db.find_one({"nome": nome.strip()})
-                
+
                 if publicador:
                     # Verificar se já existe um registro idêntico no histórico
                     historico = publicador.get('historico', [])
@@ -497,9 +556,8 @@ class DatabaseOperations:
                             }
                         )
                 else:
-                    # Se o publicador não existir, tenta criar
-                    from util.janelas import janelas
-                    janelas.verificarInclusaoPublicador(nome, parte, data_participacao)
+                    # Não deveria acontecer: o publicador é criado logo acima quando não existe.
+                    logger.warning(f"Publicador {nome} não encontrado após criação automática")
             else:
                 # Para DynamoDB
                 # Primeiro verificar se o publicador existe
@@ -592,8 +650,8 @@ class DatabaseOperations:
         Retorna o array de histórico que está armazenado no banco de dados.
         """
         try:
-            nome_publicador = util.ComandosUteis.TitleCase(nome_publicador.strip())
-            
+            nome_publicador = self._resolver_nome(nome_publicador) or util.ComandosUteis.normalizar_nome(nome_publicador)
+
             # Buscar o publicador no banco de dados
             if self.db_type == 'mongodb':
                 publicador = self.db.find_one({"nome": nome_publicador})
@@ -622,7 +680,149 @@ class DatabaseOperations:
             import traceback
             traceback.print_exc()
             return []
-    
+
+    def _substituir_nome_em_valor(self, valor, chave_origem, nome_destino):
+        """Troca `chave_origem` por `nome_destino` dentro de um documento de reunião.
+
+        Desce recursivamente em dict/list porque os documentos de reunião têm shape
+        aberto (`{**dados}`) e sub-dicts (`escola`, `nossa_vida_crista`). Em strings,
+        compara pela chave sem acento e trata campos multi-nome separados por '/'.
+        Retorna (novo_valor, mudou).
+        """
+        if isinstance(valor, dict):
+            mudou = False
+            novo = {}
+            for k, v in valor.items():
+                novo_v, v_mudou = self._substituir_nome_em_valor(v, chave_origem, nome_destino)
+                novo[k] = novo_v
+                mudou = mudou or v_mudou
+            return novo, mudou
+        if isinstance(valor, list):
+            mudou = False
+            nova_lista = []
+            for item in valor:
+                novo_item, item_mudou = self._substituir_nome_em_valor(item, chave_origem, nome_destino)
+                nova_lista.append(novo_item)
+                mudou = mudou or item_mudou
+            return nova_lista, mudou
+        if isinstance(valor, str):
+            if '/' in valor:
+                partes = [p.strip() for p in valor.split('/')]
+                if not any(util.ComandosUteis.chave_nome(p) == chave_origem for p in partes):
+                    return valor, False
+                novas = [nome_destino if util.ComandosUteis.chave_nome(p) == chave_origem else p
+                         for p in partes]
+                return " / ".join(novas), True
+            if valor.strip() and util.ComandosUteis.chave_nome(valor) == chave_origem:
+                return nome_destino, True
+            return valor, False
+        return valor, False
+
+    def transferir_historico(self, nome_origem, nome_destino, atualizar_reunioes=True):
+        """Move todo o histórico de um publicador para outro.
+
+        Usado quando participações foram gravadas no publicador errado. O histórico
+        da origem é mesclado no destino (sem duplicar parte+data) e a origem fica
+        zerada. Com `atualizar_reunioes=True` o nome também é trocado nas reuniões
+        já salvas — sem isso, resalvar a semana reconstrói o histórico e desfaz a
+        transferência.
+
+        Returns:
+            dict: {"success", "message", "entradas_transferidas", "documentos_atualizados"}
+        """
+        resultado = {
+            "success": False,
+            "message": "",
+            "entradas_transferidas": 0,
+            "documentos_atualizados": 0,
+        }
+        try:
+            if self.db_type != 'mongodb':
+                resultado["message"] = "Transferência de histórico só está disponível para MongoDB"
+                return resultado
+
+            origem = self._resolver_nome(nome_origem)
+            destino = self._resolver_nome(nome_destino)
+            if not origem:
+                resultado["message"] = f"Publicador de origem '{nome_origem}' não encontrado"
+                return resultado
+            if not destino:
+                resultado["message"] = f"Publicador de destino '{nome_destino}' não encontrado"
+                return resultado
+            if origem == destino:
+                resultado["message"] = "Origem e destino são o mesmo publicador"
+                return resultado
+
+            doc_origem = self.db.find_one({"nome": origem}, {"historico": 1})
+            doc_destino = self.db.find_one({"nome": destino}, {"historico": 1})
+            historico_origem = (doc_origem or {}).get("historico", []) or []
+            historico_destino = (doc_destino or {}).get("historico", []) or []
+
+            existentes = {(h.get("parte"), h.get("data")) for h in historico_destino}
+            novas = [h for h in historico_origem
+                     if (h.get("parte"), h.get("data")) not in existentes]
+            historico_final = historico_destino + novas
+
+            self.db.update_one(
+                {"nome": destino},
+                {"$set": {
+                    "historico": historico_final,
+                    "ultima_parte": historico_final[-1].get("data", "") if historico_final else ""
+                }}
+            )
+            self.db.update_one(
+                {"nome": origem},
+                {"$set": {"historico": [], "ultima_parte": ""}}
+            )
+            resultado["entradas_transferidas"] = len(novas)
+
+            if atualizar_reunioes:
+                resultado["documentos_atualizados"] = self._substituir_nome_nas_reunioes(origem, destino)
+
+            resultado["success"] = True
+            resultado["message"] = (
+                f"{len(novas)} entrada(s) transferida(s) de {origem} para {destino}"
+            )
+            if atualizar_reunioes:
+                resultado["message"] += f"; {resultado['documentos_atualizados']} reunião(ões) atualizada(s)"
+            logger.info(resultado["message"])
+            return resultado
+
+        except Exception as e:
+            logger.error(f"Erro ao transferir histórico: {str(e)}")
+            resultado["message"] = f"Erro ao transferir histórico: {str(e)}"
+            return resultado
+
+    def _substituir_nome_nas_reunioes(self, origem, destino):
+        """Troca o nome do publicador nas reuniões/designações já salvas.
+
+        Retorna a quantidade de documentos alterados.
+        """
+        chave_origem = util.ComandosUteis.chave_nome(origem)
+        db, _ = self._obter_db_e_collections_mongodb()
+        # Mesmas referências usadas por quem grava cada tipo de documento:
+        # reuniões (meio de semana e final de semana) usam self.db[...],
+        # designações de salão usam a database.
+        collections = [
+            self.db['reunioes'],
+            self.db['reunioes_final_semana'],
+            db['designacoes_salao'],
+        ]
+
+        atualizados = 0
+        for collection in collections:
+            try:
+                for doc in list(collection.find({})):
+                    doc_id = doc.get("_id")
+                    conteudo = {k: v for k, v in doc.items() if k != "_id"}
+                    novo, mudou = self._substituir_nome_em_valor(conteudo, chave_origem, destino)
+                    if mudou:
+                        collection.update_one({"_id": doc_id}, {"$set": novo})
+                        atualizados += 1
+            except Exception as e:
+                logger.warning(f"Não foi possível atualizar nomes em uma collection: {str(e)}")
+        return atualizados
+
     def calcular_tempo_sem_fazer(self, nome_publicador, parte):
         """
         Calcula quantas semanas se passaram desde a última vez que o publicador fez uma parte específica.
@@ -822,7 +1022,8 @@ class DatabaseOperations:
         Atualiza o status de batismo de um publicador
         """
         try:
-            collection_publicadores = self.db['publicadores']
+            _, collection_publicadores = self._obter_db_e_collections_mongodb()
+            nome = self._resolver_nome(nome) or util.ComandosUteis.normalizar_nome(nome)
             resultado = collection_publicadores.update_one(
                 {"nome": nome},
                 {"$set": {"batizado": batizado}}
@@ -877,7 +1078,10 @@ class DatabaseOperations:
             if not update_data:
                 logger.warning("Nenhum campo para atualizar")
                 return False
-            
+
+            nome = self._resolver_nome(nome) or util.ComandosUteis.normalizar_nome(nome)
+            update_data["nome_chave"] = util.ComandosUteis.chave_nome(nome)
+
             resultado = collection_publicadores.update_one(
                 {"nome": nome},
                 {"$set": update_data}
@@ -1360,6 +1564,7 @@ class DatabaseOperations:
         if not nome or not nome.strip():
             return None
         try:
+            nome = self._resolver_nome(nome) or util.ComandosUteis.normalizar_nome(nome)
             if self.db_type == 'mongodb':
                 p = self.db.find_one({"nome": nome.strip()}, {"sexo": 1})
             else:

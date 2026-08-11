@@ -12,7 +12,8 @@ Armazena os publicadores da congregação.
 
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
-| `nome` | string | Nome do publicador (chave única; usado em buscas e título). |
+| `nome` | string | Nome do publicador (chave única; usado em buscas e título). Gravado normalizado: espaços colapsados + Title Case, acentos preservados. |
+| `nome_chave` | string | `nome` sem acento e em minúsculo (`ComandosUteis.chave_nome`). Só para deduplicar/localizar — nunca exibido. Preenchido automaticamente (inclusive backfill no arranque). |
 | `batizado` | boolean | Se é batizado. |
 | `Anciao` | boolean | Se é ancião. |
 | `Servo_Ministerial` | boolean | Se é servo ministerial. |
@@ -22,7 +23,7 @@ Armazena os publicadores da congregação.
 | `ultima_parte` | string | Texto da última parte realizada (legado/informativo). |
 | `historico` | array | Lista de `{ "parte": string, "data": string }` (ex.: `"Presidente"`, `"Semana 1 de Janeiro de 2026"`). |
 
-- **Índices:** não há índice único explícito em `publicadores`; o nome é usado como identificador.
+- **Índices:** índice **não único** em `nome_chave` (criado em `DatabaseOperations.__init__`); não há índice único explícito em `publicadores` — o nome é usado como identificador. `post()` recusa criar um segundo publicador com a mesma `nome_chave`, e `_resolver_nome()` resolve qualquer variação de acento/espaço para o nome canônico gravado.
 - A collection é a mesma usada por `db_connection.get_connection()` em modo MongoDB.
 
 ### Collection: `reunioes`

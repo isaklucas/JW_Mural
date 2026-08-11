@@ -4,6 +4,7 @@ Tela extraída de layout.py (SDD 03) — mixin de ModernApp.
 Código movido verbatim; `self` e navegação inalterados.
 """
 from views._shared import *  # noqa: F401,F403
+from util.comandosUteis import ComandosUteis
 
 
 class PublicadoresMixin:
@@ -249,7 +250,18 @@ class PublicadoresMixin:
                     "microfone": permissao_microfone_var.get()
                 }
                 if nome.strip():
-                    publicador_service.adicionar(nome, batizado, sexo=sexo, permissoes=permissoes)
+                    existentes = {p['nome'] for p in publicador_service.listar()}
+                    # `adicionar` normaliza o nome e devolve o publicador canônico:
+                    # se já existir (acento/espaço diferente), nada é criado.
+                    nome_final = publicador_service.adicionar(
+                        nome, batizado, sexo=sexo, permissoes=permissoes)
+                    if nome_final in existentes:
+                        Messagebox.show_warning(
+                            f"'{nome.strip()}' já está cadastrado como '{nome_final}'.",
+                            "Publicador já existe",
+                            parent=modal
+                        )
+                        return
                     atualizar_lista()
                     modal.destroy()
             
@@ -644,6 +656,23 @@ class PublicadoresMixin:
                         if novo_nome.strip():
                             # Se o nome mudou, precisamos excluir o antigo e criar um novo
                             if novo_nome != selected_item['nome']:
+                                # Renomear para um nome que já é de OUTRO publicador
+                                # sobrescreveria o histórico dele — bloquear.
+                                chave_novo = ComandosUteis.chave_nome(novo_nome)
+                                chave_atual = ComandosUteis.chave_nome(selected_item['nome'])
+                                if chave_novo != chave_atual and any(
+                                    ComandosUteis.chave_nome(p['nome']) == chave_novo
+                                    for p in publicador_service.listar()
+                                ):
+                                    Messagebox.show_warning(
+                                        f"Já existe um publicador cadastrado como '{novo_nome.strip()}'. "
+                                        "Para juntar os dois, use 'Transferir Histórico' na tela "
+                                        "Histórico de Publicadores.",
+                                        "Nome já existe",
+                                        parent=modal
+                                    )
+                                    return
+
                                 # Buscar dados do publicador antigo para preservar histórico
                                 publicador_antigo = next((p for p in publicador_service.listar() if p["nome"] == selected_item['nome']), None)
                                 historico_antigo = publicador_antigo.get("historico", []) if publicador_antigo else []
@@ -1191,6 +1220,170 @@ class PublicadoresMixin:
                     ""
                 ))
         
+        def abrir_modal_transferir_historico():
+            """Move o histórico de um publicador para outro (participações gravadas
+            no irmão errado). Também troca o nome nas reuniões já salvas, senão
+            resalvar a semana reconstrói o histórico e desfaz a transferência."""
+            publicadores = sorted(
+                (p['nome'] for p in publicador_service.listar()),
+                key=lambda n: n.lower()
+            )
+            if len(publicadores) < 2:
+                Messagebox.show_warning(
+                    "É preciso ter pelo menos dois publicadores cadastrados.",
+                    "Transferir Histórico",
+                    parent=historico_pub_window
+                )
+                return
+
+            modal = ttk.Toplevel(historico_pub_window)
+            modal.title("Transferir Histórico")
+
+            container = ttk.Frame(modal, padding=20)
+            container.pack(fill=BOTH, expand=YES)
+
+            ttk.Label(
+                container,
+                text="Transferir Histórico",
+                font=("Helvetica", 18, "bold"),
+                bootstyle="primary"
+            ).pack(anchor=W, pady=(0, 5))
+
+            ttk.Label(
+                container,
+                text="Move todas as participações de um publicador para outro.",
+                font=("Helvetica", 10),
+                bootstyle="secondary",
+                wraplength=460
+            ).pack(anchor=W, pady=(0, 15))
+
+            campos = ttk.Frame(container)
+            campos.pack(fill=X)
+            campos.grid_columnconfigure(1, weight=1)
+
+            # Origem pré-preenchida com a linha selecionada na tabela, se houver
+            nome_selecionado = ""
+            selecao = tree.selection()
+            if selecao:
+                valores = tree.item(selecao[0])['values']
+                if valores and valores[0] in publicadores:
+                    nome_selecionado = valores[0]
+
+            ttk.Label(campos, text="De (origem):", font=("Helvetica", 11)).grid(
+                row=0, column=0, sticky="w", padx=(0, 10), pady=8)
+            origem_var = ttk.StringVar(value=nome_selecionado)
+            origem_combo = ttk.Combobox(
+                campos, textvariable=origem_var, values=publicadores,
+                state="readonly", bootstyle="primary"
+            )
+            origem_combo.grid(row=0, column=1, sticky="ew", pady=8)
+
+            ttk.Label(campos, text="Para (destino):", font=("Helvetica", 11)).grid(
+                row=1, column=0, sticky="w", padx=(0, 10), pady=8)
+            destino_var = ttk.StringVar()
+            destino_combo = ttk.Combobox(
+                campos, textvariable=destino_var, values=publicadores,
+                state="readonly", bootstyle="primary"
+            )
+            destino_combo.grid(row=1, column=1, sticky="ew", pady=8)
+
+            atualizar_reunioes_var = ttk.BooleanVar(value=True)
+            ttk.Checkbutton(
+                container,
+                text="Atualizar também as reuniões já salvas (recomendado)",
+                variable=atualizar_reunioes_var,
+                bootstyle="primary-round-toggle"
+            ).pack(anchor=W, pady=(15, 5))
+
+            resumo_label = ttk.Label(
+                container, text="", font=("Helvetica", 10), bootstyle="secondary",
+                wraplength=460
+            )
+            resumo_label.pack(anchor=W, pady=(5, 10))
+
+            def atualizar_resumo(*args):
+                origem = origem_var.get()
+                if not origem:
+                    resumo_label.configure(text="")
+                    return
+                qtd = len(publicador_service.buscar_historico(origem))
+                resumo_label.configure(
+                    text=f"{origem} tem {qtd} entrada(s) no histórico."
+                )
+
+            origem_var.trace("w", atualizar_resumo)
+            atualizar_resumo()
+
+            def confirmar():
+                origem = origem_var.get().strip()
+                destino = destino_var.get().strip()
+                if not origem or not destino:
+                    Messagebox.show_warning(
+                        "Selecione o publicador de origem e o de destino.",
+                        "Transferir Histórico", parent=modal
+                    )
+                    return
+                if origem == destino:
+                    Messagebox.show_warning(
+                        "Origem e destino não podem ser o mesmo publicador.",
+                        "Transferir Histórico", parent=modal
+                    )
+                    return
+
+                mensagem = (
+                    f"Transferir todo o histórico de '{origem}' para '{destino}'?\n\n"
+                    f"O histórico de '{origem}' ficará vazio."
+                )
+                if atualizar_reunioes_var.get():
+                    mensagem += "\nAs reuniões já salvas também passarão a citar o destino."
+                if Messagebox.yesno(mensagem, "Confirmar transferência", parent=modal) != "Yes":
+                    return
+
+                resultado = publicador_service.transferir_historico(
+                    origem, destino, atualizar_reunioes_var.get()
+                )
+                if resultado.get("success"):
+                    Messagebox.show_info(
+                        resultado.get("message", "Histórico transferido"),
+                        "Transferir Histórico", parent=historico_pub_window
+                    )
+                    modal.destroy()
+                    carregar_publicadores()
+                else:
+                    Messagebox.show_error(
+                        resultado.get("message", "Erro ao transferir histórico"),
+                        "Transferir Histórico", parent=modal
+                    )
+
+            botoes = ttk.Frame(container)
+            botoes.pack(fill=X, pady=(10, 0))
+
+            ttk.Button(
+                botoes, text="Transferir", command=confirmar,
+                bootstyle="success", padding=(20, 10)
+            ).pack(side=LEFT, padx=5)
+
+            ttk.Button(
+                botoes, text="Cancelar", command=modal.destroy,
+                bootstyle="secondary", padding=(20, 10)
+            ).pack(side=LEFT, padx=5)
+
+            modal.update_idletasks()
+            largura_janela = 520
+            altura_janela = 400
+            x_centralizado = int((modal.winfo_screenwidth() / 2) - (largura_janela / 2))
+            y_centralizado = int((modal.winfo_screenheight() / 2) - (altura_janela / 2))
+            modal.geometry(f"{largura_janela}x{altura_janela}+{x_centralizado}+{y_centralizado}")
+            modal.transient(historico_pub_window)
+            modal.grab_set()
+
+        ttk.Button(
+            search_frame,
+            text="Transferir Histórico",
+            command=abrir_modal_transferir_historico,
+            bootstyle="primary"
+        ).pack(side=RIGHT)
+
         # Configurar evento de clique na linha
         def on_tree_click(event):
             item = tree.identify_row(event.y)
