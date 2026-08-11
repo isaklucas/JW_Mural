@@ -58,7 +58,7 @@ def backup_database(sufixo: str = "", forcar: bool = False) -> bool:
         return False
 
 
-def limpar_backups_antigos(dias: int = 30) -> int:
+def limpar_backups_antigos(dias: int = 90) -> int:
     """Remove pastas de backup mais velhas que `dias`. Retorna quantas foram apagadas.
 
     A data vem dos 10 primeiros caracteres do nome da pasta ("2026-08-11" e

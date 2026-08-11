@@ -76,13 +76,13 @@ def test_backup_de_saida_usa_pasta_propria_e_regrava(raiz, monkeypatch):
 
 
 def test_limpar_backups_antigos_remove_so_o_que_venceu(raiz):
-    antigo = date.today() - timedelta(days=40)
-    recente = date.today() - timedelta(days=5)
+    antigo = date.today() - timedelta(days=100)
+    recente = date.today() - timedelta(days=40)
     backups = raiz / "backups"
     for nome in (f"{antigo}", f"{antigo}-saida", f"{recente}", f"{date.today()}", "manual"):
         (backups / nome).mkdir(parents=True)
 
-    removidas = backup_mod.limpar_backups_antigos(30)
+    removidas = backup_mod.limpar_backups_antigos(90)
 
     assert removidas == 2
     restantes = sorted(p.name for p in backups.iterdir())
@@ -91,7 +91,8 @@ def test_limpar_backups_antigos_remove_so_o_que_venceu(raiz):
 
 def test_backup_purga_antigos(raiz, monkeypatch):
     _instalar_db(monkeypatch)
-    antigo = raiz / "backups" / f"{date.today() - timedelta(days=40)}"
+    # Mais velho que a retenção padrão (90 dias)
+    antigo = raiz / "backups" / f"{date.today() - timedelta(days=100)}"
     antigo.mkdir(parents=True)
 
     backup_mod.backup_database()

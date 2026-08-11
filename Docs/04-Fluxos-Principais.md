@@ -17,7 +17,7 @@ Descrição dos fluxos de uso mais importantes e onde eles estão implementados 
 
 - **Arranque:** `layout.py` cria a janela e chama `initialize_application` → `startup_manager.run_checks()`, que verifica sistema/conexão e chama `backup_database()` — exporta as collections para `backups/<AAAA-MM-DD>/` e **pula se a pasta do dia já existe** (snapshot de antes das edições do dia).
 - **Encerramento:** fechar no X dispara `_encerrar_app` (registrado em `root.protocol("WM_DELETE_WINDOW", ...)`), que mostra "Salvando backup..." e chama `backup_database(sufixo="-saida", forcar=True)` → `backups/<AAAA-MM-DD>-saida/`, sobrescrito a cada fechamento do dia. Falha de backup não impede o app de fechar. O mesmo backup roda antes de `updater.lancar_instalador_e_sair` (atualização também encerra o app).
-- **Retenção:** todo backup bem-sucedido chama `limpar_backups_antigos(30)` — apaga pastas de backup com mais de 30 dias (nome fora do padrão `AAAA-MM-DD*` é ignorado).
+- **Retenção:** todo backup bem-sucedido chama `limpar_backups_antigos(90)` — apaga pastas de backup com mais de 90 dias (nome fora do padrão `AAAA-MM-DD*` é ignorado).
 - **Restaurar:** Configurações → Restaurar Banco lista todas as subpastas de `backups/` (inclusive as `-saida`) e usa `backup.restore_database`.
 
 ---
