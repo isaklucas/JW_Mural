@@ -58,6 +58,8 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 
 **janelas.py** — Diálogo para solicitar nome de publicador (com lista filtrável). Publicador inexistente **não** gera mais diálogo de confirmação: é criado direto em `db_operations` (batizado=True).
 
+**backup.py** — `backup_database(sufixo="", forcar=False)` exporta as collections do Mongo para JSON em `backups/<AAAA-MM-DD><sufixo>/`; sem `forcar`, pula se a pasta do dia já existe. Arranque usa o padrão (`backups/<data>/`); o encerramento usa `sufixo="-saida", forcar=True`. `limpar_backups_antigos(30)` roda a cada backup e apaga pastas com mais de 30 dias. `restore_database(data, collections)` repõe as collections a partir dos JSONs (usado em Configurações).
+
 **db_utils.py** — Utilitários de banco.
 
 **comandosUteis.py** — Normalização de nomes usada em db_operations: `TitleCase`/`normalizar_nome` (colapsa espaços + Title Case, mantendo acentos) e `chave_nome` (sem acento/minúsculo). A chave é gravada em `publicadores.nome_chave` e usada por `DatabaseOperations._resolver_nome` para achar o publicador mesmo com acento ou espaço diferente — é o que evita cadastro duplicado.

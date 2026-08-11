@@ -206,6 +206,52 @@ class ModernApp(PublicadoresMixin, HistoricoMixin, ReunioesMixin, DesignacoesMix
         return criar_card(self.cards_frame, title, description, style, command,
                           row, col, columnspan)
 
+def _backup_de_saida():
+    """Grava o backup do encerramento (backups/<data>-saida/).
+
+    O backup do arranque é de ANTES das edições do dia; este captura o estado final.
+    Nunca propaga erro: falha de backup não pode impedir o app de fechar.
+    """
+    try:
+        from util.backup import backup_database
+        backup_database(sufixo="-saida", forcar=True)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Falha no backup de saída: {e}")
+
+
+def _encerrar_app(root):
+    """Fecha o app gravando o backup de saída, com aviso na tela enquanto grava."""
+    aviso = None
+    try:
+        root.withdraw()
+        aviso = ttk.Toplevel(root)
+        aviso.title("Fechando")
+        aviso.resizable(False, False)
+        ttk.Label(
+            aviso,
+            text="Salvando backup do banco de dados...",
+            font=("Segoe UI", 11),
+            padding=20
+        ).pack()
+        aviso.update_idletasks()
+        largura, altura = 360, 100
+        x = (aviso.winfo_screenwidth() - largura) // 2
+        y = (aviso.winfo_screenheight() - altura) // 2
+        aviso.geometry(f"{largura}x{altura}+{x}+{y}")
+        aviso.update()  # garante que a janela apareça ANTES da gravação
+
+        _backup_de_saida()
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Erro ao encerrar a aplicação: {e}")
+    finally:
+        try:
+            if aviso is not None:
+                aviso.destroy()
+        except Exception:
+            pass
+        root.destroy()
+
+
 def _verificar_atualizacao_async(root):
     """Verifica atualização em background e, se houver, oferece instalar."""
     def _worker():
@@ -252,6 +298,8 @@ def _oferecer_atualizacao(root, info):
                 "Não foi possível baixar a atualização. Tente novamente mais tarde.",
                 "Erro na atualização", parent=root))
             return
+        # Backup de saída: este caminho encerra o app sem passar pelo X da janela.
+        _backup_de_saida()
         # Lança o instalador e encerra o app (libera arquivos para substituição).
         updater.lancar_instalador_e_sair(caminho)
 
@@ -316,7 +364,10 @@ if __name__ == "__main__":
         
         # Agendar a inicialização para acontecer após a janela principal estar pronta
         root.after(100, start_checks)
-        
+
+        # Fechar pelo X grava o backup de saída antes de encerrar
+        root.protocol("WM_DELETE_WINDOW", lambda: _encerrar_app(root))
+
         # Iniciar loop principal
         root.mainloop()
         
