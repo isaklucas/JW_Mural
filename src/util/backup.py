@@ -1,8 +1,9 @@
 import json
 import logging
+import shutil
 import sys
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,16 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def backup_database() -> bool:
-    """Exporta todas as collections MongoDB para JSON em backups/<YYYY-MM-DD>/ na raiz do projeto."""
+def backup_database(sufixo: str = "", forcar: bool = False) -> bool:
+    """Exporta todas as collections MongoDB para JSON em backups/<YYYY-MM-DD><sufixo>/.
+
+    Args:
+        sufixo: sufixo da pasta do dia. Vazio = backup do arranque; "-saida" = backup
+                gravado no encerramento do app (assim o snapshot do arranque, de antes
+                das edições do dia, não é sobrescrito).
+        forcar: regrava mesmo se a pasta do dia já existir (usado no encerramento,
+                que deve refletir sempre o estado mais recente).
+    """
     try:
         from database.db_connection import db_connection
 
@@ -22,9 +31,9 @@ def backup_database() -> bool:
             logger.info("Backup ignorado: banco não é MongoDB")
             return True
 
-        backup_dir = _project_root() / "backups" / str(date.today())
+        backup_dir = _project_root() / "backups" / f"{date.today()}{sufixo}"
 
-        if backup_dir.exists():
+        if backup_dir.exists() and not forcar:
             logger.info(f"Backup de hoje já existe: {backup_dir}")
             return True
 
@@ -41,11 +50,46 @@ def backup_database() -> bool:
             logger.info(f"Backup {name}: {len(docs)} documentos")
 
         logger.info(f"Backup concluído: {backup_dir} ({len(collections)} collections)")
+        limpar_backups_antigos()
         return True
 
     except Exception as e:
         logger.error(f"Erro no backup: {e}")
         return False
+
+
+def limpar_backups_antigos(dias: int = 90) -> int:
+    """Remove pastas de backup mais velhas que `dias`. Retorna quantas foram apagadas.
+
+    A data vem dos 10 primeiros caracteres do nome da pasta ("2026-08-11" e
+    "2026-08-11-saida" contam como o mesmo dia). Pasta com nome fora desse padrão é
+    ignorada — nunca apagamos algo que o usuário criou à mão.
+    """
+    removidas = 0
+    try:
+        backups_root = _project_root() / "backups"
+        if not backups_root.exists():
+            return 0
+
+        limite = date.today() - timedelta(days=dias)
+
+        for pasta in backups_root.iterdir():
+            if not pasta.is_dir():
+                continue
+            try:
+                data_pasta = datetime.strptime(pasta.name[:10], "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if data_pasta < limite:
+                shutil.rmtree(pasta, ignore_errors=True)
+                removidas += 1
+                logger.info(f"Backup antigo removido: {pasta}")
+
+        return removidas
+
+    except Exception as e:
+        logger.error(f"Erro ao limpar backups antigos: {e}")
+        return removidas
 
 
 def restore_database(backup_date: str, collections: list) -> dict:
