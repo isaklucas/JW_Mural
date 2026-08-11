@@ -56,11 +56,11 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 
 **startup_manager.py** — Janela de loading e execução das verificações no arranque; criação de diretórios se necessário.
 
-**janelas.py** — Diálogos para solicitar nome de publicador (com lista filtrável) e outros modais reutilizáveis.
+**janelas.py** — Diálogo para solicitar nome de publicador (com lista filtrável). Publicador inexistente **não** gera mais diálogo de confirmação: é criado direto em `db_operations` (batizado=True).
 
 **db_utils.py** — Utilitários de banco.
 
-**comandosUteis.py** — Funções como `TitleCase` para formatação de nomes; usadas em db_operations.
+**comandosUteis.py** — Normalização de nomes usada em db_operations: `TitleCase`/`normalizar_nome` (colapsa espaços + Title Case, mantendo acentos) e `chave_nome` (sem acento/minúsculo). A chave é gravada em `publicadores.nome_chave` e usada por `DatabaseOperations._resolver_nome` para achar o publicador mesmo com acento ou espaço diferente — é o que evita cadastro duplicado.
 
 ## assets/
 

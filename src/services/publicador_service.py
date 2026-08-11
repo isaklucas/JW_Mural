@@ -18,6 +18,10 @@ class PublicadorService:
     def buscar_historico(self, *args, **kwargs):
         return db_ops.buscar_historico_publicador(*args, **kwargs)
 
+    def transferir_historico(self, nome_origem, nome_destino, atualizar_reunioes=True):
+        """Move o histórico de um publicador para outro (ver `db_ops.transferir_historico`)."""
+        return db_ops.transferir_historico(nome_origem, nome_destino, atualizar_reunioes)
+
     def resetar_todo_historico(self, *args, **kwargs):
         return db_ops.resetar_todo_historico(*args, **kwargs)
 

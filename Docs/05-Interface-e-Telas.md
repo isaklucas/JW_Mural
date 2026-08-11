@@ -30,6 +30,8 @@ Filtros por ano e mês. Lista de reuniões de final de semana; ao clicar, exibe 
 
 Busca por nome. Lista de publicadores; ao selecionar um, exibe o histórico de participações (parte e data).
 
+Botão **Transferir Histórico**: move todas as participações de um publicador para outro (usado quando a participação foi gravada no irmão errado). Escolhe origem e destino, mescla no destino sem duplicar `parte+data`, zera a origem e — com o toggle "Atualizar também as reuniões já salvas" marcado (padrão) — troca o nome em `reunioes`, `reunioes_final_semana` e `designacoes_salao`. Sem essa troca, resalvar a semana reconstrói o histórico a partir da reunião e desfaz a transferência. Via `publicador_service.transferir_historico`.
+
 ## Designações Salão
 
 Gerencia designações de áudio, vídeo, microfone e indicadores por mês. Geração automática (respeitando impedimentos e balanceando por quem fez menos), edição manual na tabela, salvar/excluir por mês e exportar `.docx`. Dados via `designacao_service`.

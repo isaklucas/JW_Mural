@@ -73,6 +73,10 @@ class DatabaseUtils:
                                     'bsonType': 'string',
                                     'description': 'Nome do publicador - obrigatório e único'
                                 },
+                                'nome_chave': {
+                                    'bsonType': 'string',
+                                    'description': 'Nome sem acento/espaço extra - usado só para deduplicar'
+                                },
                                 'batizado': {
                                     'bsonType': 'bool',
                                     'description': 'Status de batismo - obrigatório'
