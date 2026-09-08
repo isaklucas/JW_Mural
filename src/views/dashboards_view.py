@@ -35,21 +35,29 @@ class DashboardsMixin:
         # Variável para controlar o dashboard atual
         current_dashboard = ttk.StringVar(value="participacoes")
         
-        # Botões do menu
+        # Botões do menu — um dashboard por categoria de parte (ver database/partes.py)
         ttk.Button(
             menu_frame,
-            text="Participações por Publicador",
+            text="Meio de Semana - Publicador",
             command=lambda: current_dashboard.set("participacoes"),
             bootstyle="primary-outline",
-            width=25
+            width=26
         ).pack(side=LEFT, padx=5)
         
         ttk.Button(
             menu_frame,
-            text="Participações por Reunião",
+            text="Meio de Semana - Reunião",
             command=lambda: current_dashboard.set("reunioes"),
             bootstyle="primary-outline",
-            width=25
+            width=24
+        ).pack(side=LEFT, padx=5)
+
+        ttk.Button(
+            menu_frame,
+            text="Final de Semana",
+            command=lambda: current_dashboard.set("final_semana"),
+            bootstyle="success-outline",
+            width=18
         ).pack(side=LEFT, padx=5)
 
         ttk.Button(
@@ -60,6 +68,19 @@ class DashboardsMixin:
             width=20
         ).pack(side=LEFT, padx=5)
 
+        # Legenda: as três categorias de parte são contadas em dashboards
+        # separados e nunca se somam (ver database/partes.py).
+        legenda = ttk.Label(
+            main_container,
+            text=("Meio de Semana = partes do programa do S140  |  "
+                  "Final de Semana = Leitura Sentinela e Presidente  |  "
+                  "Designações Salão = trabalho na reunião (áudio, vídeo, microfone, indicador). "
+                  "As contagens não se misturam."),
+            bootstyle="secondary",
+            font=("Helvetica", 9)
+        )
+        legenda.pack(fill=X, pady=(0, 10))
+
         # Frame para filtro de parte (apenas para dashboard de participações)
         filtro_frame = ttk.Frame(main_container)
         # Não empacotar inicialmente, será mostrado apenas quando necessário
@@ -68,7 +89,6 @@ class DashboardsMixin:
         partes_disponiveis = [
             "Todas as Partes",
             "Todas as Partes Menos Oração",
-            "Todas as Partes Menos Final de Semana",
             "Presidente",
             "Oração Inicial",
             "Tesouro",
@@ -125,33 +145,41 @@ class DashboardsMixin:
             for widget in graphs_frame.winfo_children():
                 widget.destroy()
 
-            # Dashboard de Designações Salão (usa Treeview, não matplotlib)
-            if current_dashboard.get() == "salao":
+            # Dashboards tabelados (Treeview, não matplotlib): cada um lê a sua
+            # própria contagem — as categorias nunca se misturam.
+            #   colunas: (chave_no_dict, titulo)
+            tabelas = {
+                "salao": (
+                    dashboard_service.contar_designacoes_por_publicador,
+                    [("audio", "Áudio"), ("video", "Vídeo"), ("microfone", "Microfone"),
+                     ("indicadores", "Indicadores"), ("total", "Total")],
+                ),
+                "final_semana": (
+                    dashboard_service.contar_participacoes_final_semana,
+                    [("leitura_sentinela", "Leitura Sentinela"),
+                     ("presidente", "Presidente"), ("total", "Total")],
+                ),
+            }
+            if current_dashboard.get() in tabelas:
                 filtro_frame.pack_forget()
-                dados = dashboard_service.contar_designacoes_por_publicador()
+                buscar_dados, colunas = tabelas[current_dashboard.get()]
+                dados = buscar_dados()
                 dados_sorted = sorted(dados.items(), key=lambda x: x[1]['total'], reverse=True)
-                cols = ("nome", "audio", "video", "microfone", "indicadores", "total")
-                tree_salao = ttk.Treeview(graphs_frame, columns=cols, show="headings",
-                                          bootstyle="primary", height=18)
-                tree_salao.heading("nome", text="Nome")
-                tree_salao.heading("audio", text="Áudio")
-                tree_salao.heading("video", text="Vídeo")
-                tree_salao.heading("microfone", text="Microfone")
-                tree_salao.heading("indicadores", text="Indicadores")
-                tree_salao.heading("total", text="Total")
-                tree_salao.column("nome", width=200, anchor=W)
-                for c in ("audio", "video", "microfone", "indicadores", "total"):
-                    tree_salao.column(c, width=90, anchor=CENTER)
+                cols = ("nome",) + tuple(chave for chave, _ in colunas)
+                tree = ttk.Treeview(graphs_frame, columns=cols, show="headings",
+                                    bootstyle="primary", height=18)
+                tree.heading("nome", text="Nome")
+                tree.column("nome", width=200, anchor=W)
+                for chave, titulo in colunas:
+                    tree.heading(chave, text=titulo)
+                    tree.column(chave, width=120, anchor=CENTER)
                 for nome, counts in dados_sorted:
-                    tree_salao.insert("", "end", values=(
-                        nome, counts['audio'], counts['video'],
-                        counts['microfone'], counts['indicadores'], counts['total']
-                    ))
-                sb_salao = ttk.Scrollbar(graphs_frame, orient="vertical",
-                                         command=tree_salao.yview, bootstyle="primary-round")
-                sb_salao.pack(side=RIGHT, fill=Y)
-                tree_salao.configure(yscrollcommand=sb_salao.set)
-                tree_salao.pack(fill=BOTH, expand=YES)
+                    tree.insert("", "end", values=(nome,) + tuple(counts[c] for c, _ in colunas))
+                sb = ttk.Scrollbar(graphs_frame, orient="vertical",
+                                   command=tree.yview, bootstyle="primary-round")
+                sb.pack(side=RIGHT, fill=Y)
+                tree.configure(yscrollcommand=sb.set)
+                tree.pack(fill=BOTH, expand=YES)
                 return
 
             # Criar nova figura
@@ -166,8 +194,6 @@ class DashboardsMixin:
                     parte_para_busca = None
                 elif parte_filtro == "Todas as Partes Menos Oração":
                     parte_para_busca = "__EXCLUIR_ORACOES__"
-                elif parte_filtro == "Todas as Partes Menos Final de Semana":
-                    parte_para_busca = "__EXCLUIR_FINAL_SEMANA__"
                 else:
                     parte_para_busca = parte_filtro
                 
@@ -199,7 +225,7 @@ class DashboardsMixin:
                     ax.text(valor, i, f' {valor}', va='center', fontsize=9)
                 
                 # Configurar o gráfico
-                titulo = f'Participações por Publicador'
+                titulo = 'Participações por Publicador - Meio de Semana'
                 if parte_filtro != "Todas as Partes":
                     titulo += f' - {parte_filtro}'
                 ax.set_title(titulo, fontsize=12, fontweight='bold')
@@ -243,7 +269,7 @@ class DashboardsMixin:
                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
                 
                 # Configurar o gráfico
-                ax.set_title('Participações Únicas por Reunião - Top Publicadores', 
+                ax.set_title('Participações Únicas por Reunião (meio de semana) - Top Publicadores', 
                             fontsize=12, fontweight='bold')
                 ax.set_xlabel('Número de Reuniões Participadas')
                 ax.set_ylabel('Publicadores')

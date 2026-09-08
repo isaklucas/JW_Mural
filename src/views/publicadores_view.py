@@ -1123,47 +1123,101 @@ class PublicadoresMixin:
             detalhes_tree.configure(yscrollcommand=detalhes_scrollbar.set)
             detalhes_tree.pack(fill=BOTH, expand=YES, padx=(0, 10))
             
-            try:
-                # Buscar histórico do publicador
-                historico = publicador_service.buscar_historico(nome_publicador)
-                
-                if historico:
-                    # Ordenar histórico por data (mais recente primeiro)
-                    historico_ordenado = sorted(historico, key=lambda x: x['data'], reverse=True)
-                    
-                    # Inserir dados na tabela com cores alternadas
-                    for i, registro in enumerate(historico_ordenado):
-                        tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+            def carregar_detalhes():
+                for item in detalhes_tree.get_children():
+                    detalhes_tree.delete(item)
+                try:
+                    # Buscar histórico do publicador
+                    historico = publicador_service.buscar_historico(nome_publicador)
+
+                    if historico:
+                        # Ordenar histórico por data (mais recente primeiro)
+                        historico_ordenado = sorted(historico, key=lambda x: x['data'], reverse=True)
+
+                        # Inserir dados na tabela com cores alternadas
+                        for i, registro in enumerate(historico_ordenado):
+                            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                            detalhes_tree.insert("", END, values=(
+                                registro['data'],
+                                registro['parte']
+                            ), tags=(tag,))
+
+                        # Configurar cores alternadas
+                        detalhes_tree.tag_configure('evenrow', background='#f0f0f0')
+                        detalhes_tree.tag_configure('oddrow', background='white')
+                    else:
                         detalhes_tree.insert("", END, values=(
-                            registro['data'],
-                            registro['parte']
-                        ), tags=(tag,))
-                    
-                    # Configurar cores alternadas
-                    detalhes_tree.tag_configure('evenrow', background='#f0f0f0')
-                    detalhes_tree.tag_configure('oddrow', background='white')
-                else:
+                            "Nenhum histórico encontrado",
+                            ""
+                        ))
+
+                except Exception as e:
+                    logger.error(f"Erro ao carregar histórico do publicador: {str(e)}")
                     detalhes_tree.insert("", END, values=(
-                        "Nenhum histórico encontrado",
+                        f"Erro ao carregar histórico: {str(e)}",
                         ""
                     ))
-            
-            except Exception as e:
-                logger.error(f"Erro ao carregar histórico do publicador: {str(e)}")
-                detalhes_tree.insert("", END, values=(
-                    f"Erro ao carregar histórico: {str(e)}",
-                    ""
-                ))
-            
-            # Botão de voltar
+
+            carregar_detalhes()
+
+            def editar_participacao_selecionada():
+                """Corrige a linha selecionada: passa para outro publicador ou apaga.
+
+                A alteração vai junto para a reunião salva (ver
+                `publicador_service.reatribuir_participacao`), senão resalvar a
+                semana traria o nome antigo de volta."""
+                selecao = detalhes_tree.selection()
+                if not selecao:
+                    Messagebox.show_warning(
+                        "Selecione uma participação na lista.",
+                        "Editar participação", parent=detalhes_window
+                    )
+                    return
+                valores = detalhes_tree.item(selecao[0])['values']
+                if not valores or not valores[1]:
+                    return
+                data_registro, parte = str(valores[0]), str(valores[1])
+                publicadores = sorted(
+                    (pub['nome'] for pub in publicador_service.listar()),
+                    key=lambda n: n.lower()
+                )
+
+                def ao_terminar():
+                    carregar_detalhes()
+                    carregar_publicadores()
+
+                abrir_modal_editar_participacao(
+                    detalhes_window, parte, data_registro,
+                    [nome_publicador], publicadores,
+                    ao_substituir=lambda atual, novo: publicador_service.reatribuir_participacao(
+                        atual, novo, parte, data_registro
+                    ),
+                    ao_remover=lambda atual: publicador_service.remover_participacao(
+                        atual, parte, data_registro
+                    ),
+                    ao_terminar=ao_terminar,
+                )
+
+            # Botões de ação
+            acoes_frame = ttk.Frame(detalhes_container)
+            acoes_frame.pack(side=BOTTOM, pady=(20, 0))
+
             ttk.Button(
-                detalhes_container,
+                acoes_frame,
+                text="Alterar / Remover",
+                command=editar_participacao_selecionada,
+                bootstyle="warning",
+                width=20
+            ).pack(side=LEFT, padx=5)
+
+            ttk.Button(
+                acoes_frame,
                 text="Voltar",
                 command=detalhes_window.destroy,
                 bootstyle="secondary",
                 width=15
-            ).pack(side=BOTTOM, pady=(20, 0))
-            
+            ).pack(side=LEFT, padx=5)
+
             # Centralizar a janela
             detalhes_window.update_idletasks()
             width = detalhes_window.winfo_width()
@@ -1336,7 +1390,7 @@ class PublicadoresMixin:
                 )
                 if atualizar_reunioes_var.get():
                     mensagem += "\nAs reuniões já salvas também passarão a citar o destino."
-                if Messagebox.yesno(mensagem, "Confirmar transferência", parent=modal) != "Yes":
+                if not confirmou(Messagebox.yesno(mensagem, "Confirmar transferência", parent=modal)):
                     return
 
                 resultado = publicador_service.transferir_historico(

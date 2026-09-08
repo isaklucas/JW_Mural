@@ -460,7 +460,7 @@ class DesignacoesMixin:
                 f"Excluir todas as designações de {MESES_PT.get(mes, mes)}/{ano}?\nEsta ação remove o histórico dos irmãos.",
                 "Confirmar Exclusão", parent=win
             )
-            if confirm not in (None, "No", "Não", "Cancelar"):
+            if confirmou(confirm):
                 res = designacao_service.excluir(ano, mes)
                 tabela.delete(mes_iid)
                 msg = res.get("message", "")
@@ -640,7 +640,7 @@ class DesignacoesMixin:
                             _set_cell_fill(row_cells[i], fill)
 
                 doc.save(caminho)
-                if Messagebox.yesno(f"DOCX salvo em:\n{caminho}\n\nAbrir arquivo?", "Exportado") == "Yes":
+                if confirmou(Messagebox.yesno(f"DOCX salvo em:\n{caminho}\n\nAbrir arquivo?", "Exportado")):
                     os.startfile(caminho)
 
             btn_f = ttk.Frame(dlg)

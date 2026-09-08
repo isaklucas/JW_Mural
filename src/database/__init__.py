@@ -13,6 +13,8 @@ salvar_reuniao = db_ops.salvar_reuniao
 buscar_reuniao = db_ops.buscar_reuniao
 buscar_historico_publicador = db_ops.buscar_historico_publicador
 transferir_historico = db_ops.transferir_historico
+remover_participacao = db_ops.remover_participacao
+reatribuir_participacao = db_ops.reatribuir_participacao
 listar_reunioes = db_ops.listar_reunioes
 salvar_reuniao_final_semana = db_ops.salvar_reuniao_final_semana
 listar_reunioes_final_semana = db_ops.listar_reunioes_final_semana
@@ -24,6 +26,7 @@ listar_designacoes_salao                = db_ops.listar_designacoes_salao
 buscar_designacoes_salao                = db_ops.buscar_designacoes_salao
 excluir_designacoes_salao               = db_ops.excluir_designacoes_salao
 contar_designacoes_salao_por_publicador = db_ops.contar_designacoes_salao_por_publicador
+contar_participacoes_final_semana_por_publicador = db_ops.contar_participacoes_final_semana_por_publicador
 
 __all__ = [
     'post',
@@ -35,6 +38,8 @@ __all__ = [
     'buscar_reuniao',
     'buscar_historico_publicador',
     'transferir_historico',
+    'remover_participacao',
+    'reatribuir_participacao',
     'listar_reunioes',
     'salvar_reuniao_final_semana',
     'listar_reunioes_final_semana',
@@ -46,5 +51,6 @@ __all__ = [
     'buscar_designacoes_salao',
     'excluir_designacoes_salao',
     'contar_designacoes_salao_por_publicador',
+    'contar_participacoes_final_semana_por_publicador',
     'db_ops'
 ]

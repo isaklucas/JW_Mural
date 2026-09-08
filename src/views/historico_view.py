@@ -187,61 +187,121 @@ class HistoricoMixin:
             detalhes_tree.configure(yscrollcommand=scrollbar.set)
             detalhes_tree.pack(fill=BOTH, expand=YES, padx=(0, 10))
             
-            try:
-                # Buscar reunião usando semana e ano
-                reuniao = reuniao_service.buscar(ano, semana)
-                
-                if reuniao:
-                    # Lista de todas as partes com seus participantes
-                    detalhes = [
-                        ("Presidente", reuniao['presidente']),
-                        ("Oração Inicial", reuniao['oracao_inicial']),
-                        ("Tesouro", reuniao['tesouro']),
-                        ("Joias Espirituais", reuniao['joias_espirituais']),
-                        ("Leitura da Bíblia", reuniao['leitura_biblia']),
-                        ("Escola - Primeira Parte", reuniao['escola']['primeira_parte']),
-                        ("Escola - Segunda Parte", reuniao['escola']['segunda_parte']),
-                        ("Escola - Terceira Parte", reuniao['escola']['terceira_parte']),
-                        ("Escola - Quarta Parte", reuniao['escola']['quarta_parte']),
-                        ("Nossa Vida Cristã - Primeira Parte", reuniao['nossa_vida_crista']['primeira_parte']),
-                        ("Nossa Vida Cristã - Segunda Parte", reuniao['nossa_vida_crista']['segunda_parte']),
-                        ("Estudo de Congregação", reuniao['estudo_congregacao']),
-                        ("Oração Final", reuniao['oracao_final'])
-                    ]
-                    
-                    # Filtrar partes que não são "não possui" e inserir na tabela com cores alternadas
-                    for i, (parte, participante) in enumerate(detalhes):
-                        if participante != "não possui":
-                            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-                            detalhes_tree.insert("", END, values=(parte, participante), tags=(tag,))
-                    
-                    # Configurar cores alternadas
-                    detalhes_tree.tag_configure('evenrow', background='#f0f0f0')
-                    detalhes_tree.tag_configure('oddrow', background='white')
-                else:
+            # Data como o histórico dos publicadores grava (ver
+            # `_atualizar_historico_publicadores`): é a chave para editar a
+            # participação nos dois lugares ao mesmo tempo.
+            data_historico = f"Semana {semana} de {ano}"
+
+            def carregar_detalhes():
+                for item in detalhes_tree.get_children():
+                    detalhes_tree.delete(item)
+                try:
+                    # Buscar reunião usando semana e ano
+                    reuniao = reuniao_service.buscar(ano, semana)
+
+                    if reuniao:
+                        # Lista de todas as partes com seus participantes
+                        detalhes = [
+                            ("Presidente", reuniao['presidente']),
+                            ("Oração Inicial", reuniao['oracao_inicial']),
+                            ("Tesouro", reuniao['tesouro']),
+                            ("Joias Espirituais", reuniao['joias_espirituais']),
+                            ("Leitura da Bíblia", reuniao['leitura_biblia']),
+                            ("Escola - Primeira Parte", reuniao['escola']['primeira_parte']),
+                            ("Escola - Segunda Parte", reuniao['escola']['segunda_parte']),
+                            ("Escola - Terceira Parte", reuniao['escola']['terceira_parte']),
+                            ("Escola - Quarta Parte", reuniao['escola']['quarta_parte']),
+                            ("Nossa Vida Cristã - Primeira Parte", reuniao['nossa_vida_crista']['primeira_parte']),
+                            ("Nossa Vida Cristã - Segunda Parte", reuniao['nossa_vida_crista']['segunda_parte']),
+                            ("Estudo de Congregação", reuniao['estudo_congregacao']),
+                            ("Oração Final", reuniao['oracao_final'])
+                        ]
+
+                        # Filtrar partes que não são "não possui" e inserir na tabela com cores alternadas
+                        for i, (parte, participante) in enumerate(detalhes):
+                            if participante != "não possui":
+                                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                                detalhes_tree.insert("", END, values=(parte, participante), tags=(tag,))
+
+                        # Configurar cores alternadas
+                        detalhes_tree.tag_configure('evenrow', background='#f0f0f0')
+                        detalhes_tree.tag_configure('oddrow', background='white')
+                    else:
+                        ttk.Label(
+                            main_container,
+                            text=f"Nenhum detalhe encontrado para {semana}/{ano}",
+                            bootstyle="danger"
+                        ).pack(pady=20)
+
+                except Exception as e:
+                    logger.error(f"Erro ao carregar detalhes: {str(e)}")
                     ttk.Label(
                         main_container,
-                        text=f"Nenhum detalhe encontrado para {semana}/{ano}",
+                        text=f"Erro ao carregar detalhes: {str(e)}",
                         bootstyle="danger"
                     ).pack(pady=20)
-            
-            except Exception as e:
-                logger.error(f"Erro ao carregar detalhes: {str(e)}")
-                ttk.Label(
-                    main_container,
-                    text=f"Erro ao carregar detalhes: {str(e)}",
-                    bootstyle="danger"
-                ).pack(pady=20)
-            
-            # Botão de voltar
+
+            carregar_detalhes()
+
+            def editar_participacao_selecionada():
+                """Troca ou remove quem faz a parte selecionada.
+
+                Mexe no histórico do publicador E no documento da reunião — se só
+                um dos dois mudasse, resalvar a semana desfaria a correção."""
+                selecao = detalhes_tree.selection()
+                if not selecao:
+                    Messagebox.show_warning(
+                        "Selecione uma parte na lista.",
+                        "Editar participação", parent=detalhes_window
+                    )
+                    return
+                valores = detalhes_tree.item(selecao[0])['values']
+                if not valores or len(valores) < 2:
+                    return
+                parte = str(valores[0])
+                # A parte pode ter dois participantes ("Nome1 / Nome2").
+                participantes = [n.strip() for n in str(valores[1]).split('/') if n.strip()]
+                publicadores = sorted(
+                    (pub['nome'] for pub in publicador_service.listar()),
+                    key=lambda n: n.lower()
+                )
+
+                def ao_terminar():
+                    carregar_detalhes()
+                    carregar_reunioes()
+
+                abrir_modal_editar_participacao(
+                    detalhes_window, parte, data_historico,
+                    participantes, publicadores,
+                    ao_substituir=lambda atual, novo: reuniao_service.reatribuir_participacao(
+                        atual, novo, parte, data_historico
+                    ),
+                    ao_remover=lambda atual: reuniao_service.remover_participacao(
+                        atual, parte, data_historico
+                    ),
+                    ao_terminar=ao_terminar,
+                )
+
+            # Botões de ação
+            acoes_frame = ttk.Frame(main_container)
+            acoes_frame.pack(side=BOTTOM, pady=(20, 0))
+
             ttk.Button(
-                main_container,
+                acoes_frame,
+                text="Alterar / Remover",
+                command=editar_participacao_selecionada,
+                bootstyle="warning",
+                width=20
+            ).pack(side=LEFT, padx=5)
+
+            ttk.Button(
+                acoes_frame,
                 text="Voltar",
                 command=detalhes_window.destroy,
                 bootstyle="secondary",
                 width=15
-            ).pack(side=BOTTOM, pady=(20, 0))
-            
+            ).pack(side=LEFT, padx=5)
+
             # Centralizar a janela
             detalhes_window.update_idletasks()
             width = detalhes_window.winfo_width()
@@ -875,7 +935,7 @@ class HistoricoMixin:
 
             def ao_excluir():
                 r = Messagebox.yesno("Excluir esta reunião do histórico? As participações (Leitura Sentinela e Presidente) serão removidas do histórico de cada publicador.", title="Confirmar exclusão")
-                if r != "Yes":
+                if not confirmou(r):
                     return
                 resultado = reuniao_service.excluir_final_semana(ano, mes)
                 if resultado.get("success"):
