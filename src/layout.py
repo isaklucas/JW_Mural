@@ -44,7 +44,7 @@ try:
     from database.db_operations import DatabaseOperations
     import util.janelas as janelas
     import util.updater as updater
-    from views.components import criar_card
+    from views.components import criar_card, confirmou
     from views.publicadores_view import PublicadoresMixin
     from views.historico_view import HistoricoMixin
     from views.reunioes_view import ReunioesMixin
@@ -271,7 +271,7 @@ def _oferecer_atualizacao(root, info):
         "Atualização disponível",
         parent=root,
     )
-    if resposta != "Yes":
+    if not confirmou(resposta):
         return
 
     # Janela simples de progresso.

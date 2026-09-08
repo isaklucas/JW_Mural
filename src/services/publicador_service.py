@@ -22,6 +22,16 @@ class PublicadorService:
         """Move o histórico de um publicador para outro (ver `db_ops.transferir_historico`)."""
         return db_ops.transferir_historico(nome_origem, nome_destino, atualizar_reunioes)
 
+    def remover_participacao(self, nome, parte, data, atualizar_reuniao=True):
+        """Apaga UMA participação do histórico (ver `db_ops.remover_participacao`)."""
+        return db_ops.remover_participacao(nome, parte, data, atualizar_reuniao)
+
+    def reatribuir_participacao(self, nome_origem, nome_destino, parte, data,
+                                atualizar_reuniao=True):
+        """Passa UMA participação para outro publicador (ver `db_ops.reatribuir_participacao`)."""
+        return db_ops.reatribuir_participacao(nome_origem, nome_destino, parte, data,
+                                              atualizar_reuniao)
+
     def resetar_todo_historico(self, *args, **kwargs):
         return db_ops.resetar_todo_historico(*args, **kwargs)
 

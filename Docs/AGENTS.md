@@ -55,9 +55,13 @@ O **JW Mural** é uma aplicação desktop Python para congregações de Testemun
 7. **Nomes:** normalizar com `util.ComandosUteis.TitleCase()` antes de salvar.
 8. **Banco:** manter compatibilidade MongoDB e DynamoDB; verificar `db_type` em operações específicas.
 9. **Múltiplos publicadores:** formato "Nome1 / Nome2" para partes com dois participantes.
-10. **Build:** ao adicionar um pacote novo em `src/`, incluí-lo no `JW_Mural.spec` (`datas` + `hiddenimports`) — como `views`/`services`. `build.bat` e `JW_Mural.iss` não precisam mudar.
+10. **Três categorias de parte, três contagens disjuntas:** o `historico` do publicador mistura tudo numa lista só. (a) programa de **meio de semana** (Presidente, Tesouro, Escola...); (b) programa de **fim de semana** (`Leitura Sentinela`, `Presidente Final Semana`); (c) **trabalho de salão** (`Salão - Áudio/Vídeo/Microfone/Indicador`). Nenhuma soma com a outra. Classificar sempre por `database/partes.py` (`eh_designacao_trabalho`, `eh_participacao_final_semana`, `somente_meio_semana`) — nunca com listas literais de nomes de parte. Parte nova = registrar lá.
+11. **Histórico e reunião andam juntos:** o histórico do publicador é DERIVADO do documento da reunião. Toda correção pontual tem de tocar os dois (`remover_participacao` / `reatribuir_participacao` fazem isso), e `salvar_reuniao` purga as participações de meio de semana daquela data antes de regravar (`_purgar_historico_da_semana`) — senão quem foi trocado fica com participação órfã ou duplicada.
+12. **Build:** ao adicionar um pacote novo em `src/`, incluí-lo no `JW_Mural.spec` (`datas` + `hiddenimports`) — como `views`/`services`. `build.bat` e `JW_Mural.iss` não precisam mudar.
 
 ## Gotchas conhecidos
 
 - **ttkbootstrap re-tematiza `tk.Button`:** sob um tema, o `bg` passado no construtor vira `primary`. Para colorir um `tk.Button`, use `.configure(bg=...)` **após** criar. (Botões `ttk.Button` às vezes não mostram texto no Windows — daí o uso de `tk.Button`.)
+- **Dashboards não se misturam:** "Meio de Semana - Publicador" e "Meio de Semana - Reunião" contam só o programa do S140; "Final de Semana" conta só Leitura Sentinela + Presidente; "Designações Salão" conta só o trabalho (áudio/vídeo/microfone/indicador). Já houve regressão em que o primeiro somava salão e fim de semana — coberta por `tests/db/test_dashboards.py`.
+- **`Messagebox.yesno` devolve o rótulo TRADUZIDO do botão:** em pt-BR volta `"Sim"`, não `"Yes"`. Comparar com `"Yes"` cancela a ação em silêncio (o usuário clica em Sim e nada acontece — foi o que quebrou Transferir Histórico, exclusão de reunião de fim de semana e o aviso de atualização). Usar sempre `views.components.confirmou(resposta)`.
 - **Importar `database` conecta no Mongo** (no import de `db_ops`). Por isso testes/headless injetam um `database` falso em `sys.modules` antes de importar módulos de produção.

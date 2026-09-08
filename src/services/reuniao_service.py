@@ -13,6 +13,16 @@ class ReuniaoService:
     def salvar(self, *args, **kwargs):
         return db_ops.salvar_reuniao(*args, **kwargs)
 
+    def remover_participacao(self, nome, parte, data, atualizar_reuniao=True):
+        """Tira um participante de uma parte já salva (histórico + reunião)."""
+        return db_ops.remover_participacao(nome, parte, data, atualizar_reuniao)
+
+    def reatribuir_participacao(self, nome_origem, nome_destino, parte, data,
+                                atualizar_reuniao=True):
+        """Troca quem fez uma parte já salva (histórico + reunião)."""
+        return db_ops.reatribuir_participacao(nome_origem, nome_destino, parte, data,
+                                              atualizar_reuniao)
+
     # --- final de semana ---
     def salvar_final_semana(self, *args, **kwargs):
         return db_ops.salvar_reuniao_final_semana(*args, **kwargs)

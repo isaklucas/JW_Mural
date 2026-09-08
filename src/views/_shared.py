@@ -33,6 +33,7 @@ from services import (
     designacao_service,
     dashboard_service,
 )
+from views.components import abrir_modal_editar_participacao, confirmou
 import util.janelas as janelas
 import util.updater as updater
 

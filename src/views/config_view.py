@@ -74,7 +74,7 @@ class ConfigMixin:
                 parent=dialog
             )
             logger.info(f"Confirmação restore: {confirmar!r}")
-            if confirmar not in ("Yes", "Sim"):
+            if not confirmou(confirmar):
                 return
             try:
                 resultados = restore_database(data, selecionadas)

@@ -1,6 +1,23 @@
 import datetime
 import logging
 from .db_connection import db_connection
+from .partes import (
+    PARTES_ORACAO,
+    PARTES_FINAL_SEMANA,
+    PARTES_SALAO,
+    PARTE_SALAO_AUDIO,
+    PARTE_SALAO_VIDEO,
+    PARTE_SALAO_MICROFONE,
+    PARTE_SALAO_INDICADOR,
+    PARTE_FS_LEITURA_SENTINELA,
+    PARTE_FS_PRESIDENTE,
+    CAMPO_REUNIAO_POR_PARTE,
+    SEM_PARTICIPANTE,
+    eh_designacao_trabalho,
+    eh_participacao_final_semana,
+    eh_participacao_meio_semana,
+    somente_meio_semana,
+)
 import util.comandosUteis as util
 
 # Configurar logging
@@ -428,6 +445,11 @@ class DatabaseOperations:
         """
         try:
             data_participacao = f"Semana {dados_reuniao['semana']} de {dados_reuniao['ano']}"
+
+            # Regravar a semana é reescrita, não acréscimo: sem purgar antes, quem
+            # foi TROCADO continuaria com a participação no histórico (órfã) — o
+            # mesmo bug já corrigido em `salvar_designacoes_salao`.
+            self._purgar_historico_da_semana(data_participacao)
             
             # Lista de todas as participações
             participacoes = [
@@ -513,6 +535,225 @@ class DatabaseOperations:
             logger.error(f"Erro ao atualizar histórico dos publicadores: {str(e)}")
             raise
             
+    def _purgar_historico_da_semana(self, data_participacao):
+        """Apaga as participações de MEIO DE SEMANA gravadas com `data_participacao`.
+
+        Chamado antes de regravar a reunião: o histórico da semana é reconstruído
+        a partir dos dados salvos, então quem saiu da designação some junto.
+        Não toca em fim de semana nem em salão (ver `database.partes`).
+        """
+        if self.db_type != 'mongodb':
+            return 0
+        try:
+            _, collection_publicadores = self._obter_db_e_collections_mongodb()
+            afetados = 0
+            for pub in list(collection_publicadores.find({}, {"nome": 1, "historico": 1})):
+                historico = pub.get("historico", []) or []
+                novo = [
+                    h for h in historico
+                    if not (h.get("data") == data_participacao
+                            and eh_participacao_meio_semana(h.get("parte")))
+                ]
+                if len(novo) != len(historico):
+                    collection_publicadores.update_one(
+                        {"nome": pub["nome"]},
+                        {"$set": {"historico": novo,
+                                  "ultima_parte": novo[-1]["data"] if novo else ""}}
+                    )
+                    afetados += 1
+            return afetados
+        except Exception as e:
+            logger.warning(f"Não foi possível purgar o histórico da semana '{data_participacao}': {str(e)}")
+            return 0
+
+    def _localizar_reuniao_por_data_historico(self, data):
+        """Acha a reunião de meio de semana correspondente a uma entrada de histórico.
+
+        O histórico grava `data` como "Semana <semana> de <ano>" (também aceita
+        sem o prefixo, formato antigo de `update_parte`).
+        """
+        if self.db_type != 'mongodb' or not data:
+            return None
+        texto = str(data).strip()
+        if texto.lower().startswith("semana "):
+            texto = texto[len("semana "):]
+        if " de " not in texto:
+            return None
+        semana, _, ano = texto.rpartition(" de ")
+        try:
+            ano = int(ano.strip())
+        except (TypeError, ValueError):
+            return None
+        return self.db['reunioes'].find_one({"ano": ano, "semana": semana.strip().upper()})
+
+    def _editar_nome_no_campo(self, valor, nome_antigo, nome_novo):
+        """Troca (ou remove, com `nome_novo=None`) um nome num campo de participante.
+
+        O campo pode ter dois participantes ("Nome1 / Nome2"); só o nome pedido é
+        afetado. Retorna (novo_valor, mudou).
+        """
+        chave_antiga = util.ComandosUteis.chave_nome(nome_antigo)
+        atuais = [p.strip() for p in str(valor or '').split('/')]
+        restantes, mudou = [], False
+        for atual in atuais:
+            if not atual or atual == SEM_PARTICIPANTE:
+                continue
+            if util.ComandosUteis.chave_nome(atual) == chave_antiga:
+                mudou = True
+                if nome_novo:
+                    restantes.append(nome_novo)
+            else:
+                restantes.append(atual)
+        return (" / ".join(restantes) if restantes else SEM_PARTICIPANTE), mudou
+
+    def _aplicar_alteracao_na_reuniao(self, parte, data, nome_antigo, nome_novo):
+        """Reflete na reunião salva a remoção/troca de um participante.
+
+        Sem isso, resalvar ou regerar a semana traria o nome antigo de volta.
+        Retorna True se a reunião foi alterada.
+        """
+        caminho = CAMPO_REUNIAO_POR_PARTE.get(parte)
+        if not caminho:
+            return False
+        doc = self._localizar_reuniao_por_data_historico(data)
+        if not doc:
+            return False
+        valor = doc
+        for chave in caminho:
+            valor = valor.get(chave) if isinstance(valor, dict) else None
+        novo_valor, mudou = self._editar_nome_no_campo(valor, nome_antigo, nome_novo)
+        if not mudou:
+            return False
+        self.db['reunioes'].update_one(
+            {"_id": doc["_id"]},
+            {"$set": {".".join(caminho): novo_valor,
+                      "ultima_atualizacao": datetime.datetime.now().isoformat()}}
+        )
+        return True
+
+    def _remover_entrada_historico(self, collection, nome, parte, data):
+        """Tira UMA ocorrência de (parte, data) do histórico do publicador.
+
+        Retorna True se removeu. Remove uma só: se a mesma parte foi gravada
+        duas vezes na mesma data, cada chamada apaga uma.
+        """
+        doc = collection.find_one({"nome": nome}, {"historico": 1})
+        historico = (doc or {}).get("historico", []) or []
+        indice = next(
+            (i for i, h in enumerate(historico)
+             if h.get("parte") == parte and h.get("data") == data),
+            None
+        )
+        if indice is None:
+            return False
+        novo = historico[:indice] + historico[indice + 1:]
+        collection.update_one(
+            {"nome": nome},
+            {"$set": {"historico": novo,
+                      "ultima_parte": novo[-1]["data"] if novo else ""}}
+        )
+        return True
+
+    def remover_participacao(self, nome, parte, data, atualizar_reuniao=True):
+        """Remove UMA participação (parte + data) do histórico de um publicador.
+
+        Com `atualizar_reuniao=True` (padrão), a reunião de meio de semana salva
+        também perde esse nome — o campo fica "não possui" se ninguém sobrar.
+
+        Returns:
+            dict: {"success", "message", "reuniao_atualizada"}
+        """
+        resultado = {"success": False, "message": "", "reuniao_atualizada": False}
+        try:
+            if self.db_type != 'mongodb':
+                resultado["message"] = "Edição de histórico só está disponível para MongoDB"
+                return resultado
+            alvo = self._resolver_nome(nome)
+            if not alvo:
+                resultado["message"] = f"Publicador '{nome}' não encontrado"
+                return resultado
+            _, collection_publicadores = self._obter_db_e_collections_mongodb()
+            if not self._remover_entrada_historico(collection_publicadores, alvo, parte, data):
+                resultado["message"] = f"'{alvo}' não tem '{parte}' em '{data}'"
+                return resultado
+            if atualizar_reuniao and eh_participacao_meio_semana(parte):
+                resultado["reuniao_atualizada"] = self._aplicar_alteracao_na_reuniao(
+                    parte, data, alvo, None
+                )
+            resultado["success"] = True
+            resultado["message"] = f"'{parte}' de '{data}' removida do histórico de {alvo}"
+            if resultado["reuniao_atualizada"]:
+                resultado["message"] += "; reunião atualizada"
+            logger.info(resultado["message"])
+            return resultado
+        except Exception as e:
+            logger.error(f"Erro ao remover participação: {str(e)}")
+            resultado["message"] = f"Erro ao remover participação: {str(e)}"
+            return resultado
+
+    def reatribuir_participacao(self, nome_origem, nome_destino, parte, data, atualizar_reuniao=True):
+        """Passa UMA participação (parte + data) de um publicador para outro.
+
+        É o `transferir_historico` de uma entrada só: a origem perde a
+        participação, o destino ganha, e a reunião salva passa a citar o destino
+        (com `atualizar_reuniao=True`) — senão resalvar a semana desfaria a troca.
+
+        Returns:
+            dict: {"success", "message", "reuniao_atualizada"}
+        """
+        resultado = {"success": False, "message": "", "reuniao_atualizada": False}
+        try:
+            if self.db_type != 'mongodb':
+                resultado["message"] = "Edição de histórico só está disponível para MongoDB"
+                return resultado
+            origem = self._resolver_nome(nome_origem)
+            if not origem:
+                resultado["message"] = f"Publicador de origem '{nome_origem}' não encontrado"
+                return resultado
+            destino = self._resolver_nome(nome_destino)
+            if not destino:
+                # Nome novo digitado à mão: cadastra em vez de recusar a troca.
+                destino = self.post(nome_destino, batizado=True)
+                logger.info(f"Publicador {destino} criado automaticamente")
+            if origem == destino:
+                resultado["message"] = "Origem e destino são o mesmo publicador"
+                return resultado
+
+            _, collection_publicadores = self._obter_db_e_collections_mongodb()
+            if not self._remover_entrada_historico(collection_publicadores, origem, parte, data):
+                resultado["message"] = f"'{origem}' não tem '{parte}' em '{data}'"
+                return resultado
+
+            doc_destino = collection_publicadores.find_one({"nome": destino}, {"historico": 1})
+            historico_destino = (doc_destino or {}).get("historico", []) or []
+            ja_tem = any(h.get("parte") == parte and h.get("data") == data
+                         for h in historico_destino)
+            if not ja_tem:
+                historico_destino = historico_destino + [{"parte": parte, "data": data}]
+                collection_publicadores.update_one(
+                    {"nome": destino},
+                    {"$set": {"historico": historico_destino,
+                              "ultima_parte": historico_destino[-1]["data"]}}
+                )
+
+            if atualizar_reuniao and eh_participacao_meio_semana(parte):
+                resultado["reuniao_atualizada"] = self._aplicar_alteracao_na_reuniao(
+                    parte, data, origem, destino
+                )
+
+            resultado["success"] = True
+            resultado["message"] = (
+                f"'{parte}' de '{data}' passou de {origem} para {destino}"
+            )
+            if resultado["reuniao_atualizada"]:
+                resultado["message"] += "; reunião atualizada"
+            logger.info(resultado["message"])
+            return resultado
+        except Exception as e:
+            logger.error(f"Erro ao reatribuir participação: {str(e)}")
+            resultado["message"] = f"Erro ao reatribuir participação: {str(e)}"
+            return resultado
+
     def _atualizar_historico_individual(self, nome, parte, data_participacao):
         """
         Atualiza o histórico de um único publicador
@@ -1257,9 +1498,15 @@ class DatabaseOperations:
 
     def contar_participacoes_unicas_por_reuniao(self):
         """
-        Conta quantas reuniões cada publicador participou de forma única.
-        Cada reunião conta apenas 1x por publicador, mesmo que ele tenha feito múltiplas partes.
-        
+        Conta quantas reuniões de MEIO DE SEMANA cada publicador participou de
+        forma única. Cada reunião conta apenas 1x por publicador, mesmo que ele
+        tenha feito múltiplas partes.
+
+        Lê apenas as partes do programa gravadas na collection `reunioes`
+        (presidente, orações, tesouro, joias, leitura, escola, vida cristã,
+        estudo). Designações de trabalho do salão vivem na collection
+        `designacoes_salao` e NÃO entram aqui — ver `database.partes`.
+
         Returns:
             tuple: (total_reunioes, dict) onde dict é {nome_publicador: quantidade_reunioes} ordenado por quantidade
         """
@@ -1389,14 +1636,23 @@ class DatabaseOperations:
 
     def contar_participacoes_por_parte(self, parte=None):
         """
-        Conta as participações de cada publicador, opcionalmente filtradas por parte específica.
-        
+        Conta as participações no programa da reunião de MEIO DE SEMANA de cada
+        publicador, opcionalmente filtradas por parte específica.
+
+        Só entra aqui o programa de meio de semana. Ficam de fora, cada um com o
+        seu próprio dashboard:
+        - fim de semana (Leitura Sentinela, Presidente Final Semana) ->
+          `contar_participacoes_final_semana_por_publicador()`
+        - trabalho de salão (Áudio, Vídeo, Microfone, Indicador) ->
+          `contar_designacoes_salao_por_publicador()`
+        A classificação vem de `database.partes` (fonte única da verdade).
+
         Args:
-            parte (str, optional): Nome da parte para filtrar. 
-                Se None, conta todas as participações.
+            parte (str, optional): Nome da parte de meio de semana para filtrar.
+                Se None, conta todas as participações de meio de semana.
                 Se "__EXCLUIR_ORACOES__", conta todas exceto orações (Oração Inicial e Oração Final).
-                Se "__EXCLUIR_FINAL_SEMANA__", conta todas exceto Leitura Sentinela (partes de Final de Semana).
-            
+                Se for parte de salão ou de fim de semana, retorna {} (dashboard errado).
+
         Returns:
             dict: Dicionário com {nome_publicador: quantidade} ordenado por quantidade (decrescente)
         """
@@ -1429,16 +1685,30 @@ class DatabaseOperations:
                 logger.info(f"Total de documentos na collection: {total}")
                 return {}
             
+            # Este dashboard é só do programa de meio de semana: pedir aqui uma
+            # parte de salão ou de fim de semana é erro de chamada, não filtro.
+            if parte and eh_designacao_trabalho(parte):
+                logger.warning(
+                    f"'{parte}' é designação de trabalho (salão) e não entra no dashboard "
+                    "de participações. Use contar_designacoes_salao_por_publicador()."
+                )
+                return {}
+            if parte and eh_participacao_final_semana(parte):
+                logger.warning(
+                    f"'{parte}' é parte de fim de semana e não entra no dashboard de meio "
+                    "de semana. Use contar_participacoes_final_semana_por_publicador()."
+                )
+                return {}
+
             # Dicionário para armazenar contagem de participações
             participacoes = {}
-            
-            # Lista de partes de oração para excluir
-            partes_oracao = ["Oração Inicial", "Oração Final"]
             
             # Processar cada publicador
             for publicador in publicadores:
                 nome = publicador.get('nome', '')
-                historico = publicador.get('historico', [])
+                # Só o programa de meio de semana: salão e fim de semana são
+                # removidos antes de qualquer contagem.
+                historico = somente_meio_semana(publicador.get('historico', []))
                 
                 if not nome:
                     continue
@@ -1447,12 +1717,7 @@ class DatabaseOperations:
                 if parte:
                     if parte == "__EXCLUIR_ORACOES__":
                         # Excluir orações: contar todas as participações exceto orações
-                        participacoes_parte = [h for h in historico if h.get('parte') not in partes_oracao]
-                        quantidade = len(participacoes_parte)
-                    elif parte == "__EXCLUIR_FINAL_SEMANA__":
-                        # Excluir Final de Semana: contar todas exceto Leitura Sentinela e Presidente Final Semana
-                        partes_final_semana = ["Leitura Sentinela", "Presidente Final Semana"]
-                        participacoes_parte = [h for h in historico if h.get('parte') not in partes_final_semana]
+                        participacoes_parte = [h for h in historico if h.get('parte') not in PARTES_ORACAO]
                         quantidade = len(participacoes_parte)
                     else:
                         # Filtrar apenas as participações da parte especificada
@@ -1473,8 +1738,6 @@ class DatabaseOperations:
             if parte:
                 if parte == "__EXCLUIR_ORACOES__":
                     logger.info(f"Filtro aplicado: Todas as Partes Menos Oração")
-                elif parte == "__EXCLUIR_FINAL_SEMANA__":
-                    logger.info(f"Filtro aplicado: Todas as Partes Menos Final de Semana")
                 else:
                     logger.info(f"Filtro aplicado: {parte}")
             
@@ -2192,7 +2455,7 @@ class DatabaseOperations:
                     datas_remover.append(f"{periodo} de {ano}")
                 datas_remover.append(f"Semana {i + 1} de {nome_mes} de {ano}")
             datas_remover = list(set(datas_remover))
-            partes_final_semana = ["Leitura Sentinela", "Presidente Final Semana"]
+            partes_final_semana = PARTES_FINAL_SEMANA
             publicadores = list(collection_publicadores.find({}, {"nome": 1, "historico": 1}))
             for pub in publicadores:
                 historico = pub.get("historico", [])
@@ -2231,9 +2494,9 @@ class DatabaseOperations:
             ]
             nomes = [p.get('nome', '').strip() for p in filtrados if p.get('nome')]
             partes_map = {
-                "audio_video": ["Salão - Áudio", "Salão - Vídeo"],
-                "microfone":   ["Salão - Microfone"],
-                "indicador":   ["Salão - Indicador"],
+                "audio_video": [PARTE_SALAO_AUDIO, PARTE_SALAO_VIDEO],
+                "microfone":   [PARTE_SALAO_MICROFONE],
+                "indicador":   [PARTE_SALAO_INDICADOR],
             }
             partes = partes_map.get(papel, [papel])
             com_contagem = [
@@ -2258,7 +2521,7 @@ class DatabaseOperations:
 
             # Purga histórico de salão das datas afetadas antes de regravar,
             # senão editar uma designação já salva duplica/deixa órfãs as entradas antigas.
-            partes_salao = ["Salão - Áudio", "Salão - Vídeo", "Salão - Microfone", "Salão - Indicador"]
+            partes_salao = PARTES_SALAO
             doc_antigo = collection.find_one({"ano": ano, "mes": mes})
             datas = {s.get('data', '') for s in dados.get('semanas', []) if s.get('data')}
             if doc_antigo:
@@ -2285,17 +2548,17 @@ class DatabaseOperations:
             for i, semana in enumerate(dados.get('semanas', [])):
                 data_part = semana.get('data', f"Semana {i + 1} de {nome_mes} de {ano}")
                 if semana.get('audio'):
-                    self._atualizar_historico_individual(semana['audio'], "Salão - Áudio", data_part)
+                    self._atualizar_historico_individual(semana['audio'], PARTE_SALAO_AUDIO, data_part)
                 if semana.get('video'):
-                    self._atualizar_historico_individual(semana['video'], "Salão - Vídeo", data_part)
+                    self._atualizar_historico_individual(semana['video'], PARTE_SALAO_VIDEO, data_part)
                 for nome in (semana.get('microfone') or '').split('/'):
                     nome = nome.strip()
                     if nome:
-                        self._atualizar_historico_individual(nome, "Salão - Microfone", data_part)
+                        self._atualizar_historico_individual(nome, PARTE_SALAO_MICROFONE, data_part)
                 for nome in (semana.get('indicadores') or '').split('/'):
                     nome = nome.strip()
                     if nome:
-                        self._atualizar_historico_individual(nome, "Salão - Indicador", data_part)
+                        self._atualizar_historico_individual(nome, PARTE_SALAO_INDICADOR, data_part)
             return {"success": True, "message": "Designações salvas"}
         except Exception as e:
             logger.error(f"Erro ao salvar designações salão: {str(e)}")
@@ -2345,7 +2608,7 @@ class DatabaseOperations:
             if not doc:
                 return {"success": False, "message": "Designações não encontradas"}
             datas = list({s.get('data', '') for s in doc.get('semanas', []) if s.get('data')})
-            partes_salao = ["Salão - Áudio", "Salão - Vídeo", "Salão - Microfone", "Salão - Indicador"]
+            partes_salao = PARTES_SALAO
             publicadores = list(collection_publicadores.find({}, {"nome": 1, "historico": 1}))
             for pub in publicadores:
                 historico = pub.get("historico", [])
@@ -2364,8 +2627,47 @@ class DatabaseOperations:
             logger.error(f"Erro ao excluir designações salão: {str(e)}")
             return {"success": False, "message": str(e)}
 
+    def contar_participacoes_final_semana_por_publicador(self):
+        """Participações no programa da reunião de FIM DE SEMANA por publicador.
+
+        Retorna {nome: {leitura_sentinela, presidente, total}}.
+        Contrapartida de `contar_participacoes_por_parte()` (meio de semana) e de
+        `contar_designacoes_salao_por_publicador()` (trabalho de salão): as três
+        contagens são disjuntas — ver `database.partes`.
+        """
+        try:
+            if self.db_type != 'mongodb':
+                logger.warning("Tipo de banco de dados não é MongoDB. Tipo: " + str(self.db_type))
+                return {}
+            if hasattr(self.db, 'find'):
+                collection_publicadores = self.db
+            else:
+                collection_publicadores = self.db['publicadores']
+            publicadores = list(collection_publicadores.find({}, {"nome": 1, "historico": 1, "_id": 0}))
+            result = {}
+            for pub in publicadores:
+                nome = pub.get('nome', '')
+                if not nome:
+                    continue
+                hist = pub.get('historico', [])
+                leitura = sum(1 for h in hist if h.get('parte') == PARTE_FS_LEITURA_SENTINELA)
+                presidente = sum(1 for h in hist if h.get('parte') == PARTE_FS_PRESIDENTE)
+                if leitura + presidente > 0:
+                    result[nome] = {"leitura_sentinela": leitura, "presidente": presidente,
+                                    "total": leitura + presidente}
+            return result
+        except Exception as e:
+            logger.error(f"Erro ao contar participações de fim de semana por publicador: {str(e)}")
+            return {}
+
     def contar_designacoes_salao_por_publicador(self):
-        """Retorna {nome: {audio, video, microfone, indicadores, total}} para todos os publicadores."""
+        """Contagem das DESIGNAÇÕES DE TRABALHO do salão por publicador.
+
+        Retorna {nome: {audio, video, microfone, indicadores, total}}.
+        Espelho de `contar_participacoes_por_parte()`: aquele conta só
+        participação no programa, este conta só trabalho de salão. As duas
+        contagens nunca se sobrepõem (ver `database.partes`).
+        """
         try:
             if self.db_type != 'mongodb':
                 return {}
@@ -2380,10 +2682,10 @@ class DatabaseOperations:
                 if not nome:
                     continue
                 hist = pub.get('historico', [])
-                audio = sum(1 for h in hist if h.get('parte') == 'Salão - Áudio')
-                video = sum(1 for h in hist if h.get('parte') == 'Salão - Vídeo')
-                mic   = sum(1 for h in hist if h.get('parte') == 'Salão - Microfone')
-                ind   = sum(1 for h in hist if h.get('parte') == 'Salão - Indicador')
+                audio = sum(1 for h in hist if h.get('parte') == PARTE_SALAO_AUDIO)
+                video = sum(1 for h in hist if h.get('parte') == PARTE_SALAO_VIDEO)
+                mic   = sum(1 for h in hist if h.get('parte') == PARTE_SALAO_MICROFONE)
+                ind   = sum(1 for h in hist if h.get('parte') == PARTE_SALAO_INDICADOR)
                 if audio + video + mic + ind > 0:
                     result[nome] = {"audio": audio, "video": video, "microfone": mic,
                                     "indicadores": ind, "total": audio + video + mic + ind}
