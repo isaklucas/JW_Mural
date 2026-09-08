@@ -10,7 +10,7 @@ Ponto de entrada e **menu principal** (~320 linhas). Contém a classe `ModernApp
 
 Interface — uma tela por módulo, cada uma um *mixin* de `ModernApp`.
 
-- **components.py** — `criar_card`: constrói cada card do menu. O card **inteiro é clicável** (não há botão "ACESSAR"); faixa de cor no topo identifica a categoria; cursor de mão e hover dão o affordance.
+- **components.py** — `criar_card`: constrói cada card do menu. O card **inteiro é clicável** (não há botão "ACESSAR"); faixa de cor no topo identifica a categoria; cursor de mão e hover dão o affordance. Também `abrir_modal_editar_participacao`: modal compartilhado pelas duas telas de histórico para substituir/remover UMA participação (recebe callbacks; não fala com o banco).
 - **_shared.py** — imports compartilhados pelas telas (`from views._shared import *`): ttk/tk, constantes, `Messagebox`, `s140`, `final_semana` e os *serviços*. As telas obtêm o acesso a dados por aqui, não por `database`.
 - **publicadores_view.py** — `PublicadoresMixin`: telas `publicadores` e `historico_publicadores`.
 - **historico_view.py** — `HistoricoMixin`: `historico` e `historico_final_semana`.
@@ -23,8 +23,8 @@ Interface — uma tela por módulo, cada uma um *mixin* de `ModernApp`.
 
 Camada de serviço — **única parte da UI que importa `database`/`db_ops`**. As telas chamam estes serviços (singletons) em vez de acessar o banco direto.
 
-- **publicador_service.py** — `publicador_service`: listar, adicionar, excluir, atualizar, buscar_historico, resetar_todo_historico, restaurar_historico.
-- **reuniao_service.py** — `reuniao_service`: listar/buscar/salvar reuniões + variantes `_final_semana`.
+- **publicador_service.py** — `publicador_service`: listar, adicionar, excluir, atualizar, buscar_historico, transferir_historico, remover_participacao, reatribuir_participacao, resetar_todo_historico, restaurar_historico.
+- **reuniao_service.py** — `reuniao_service`: listar/buscar/salvar reuniões, remover_participacao/reatribuir_participacao (edição de uma parte já salva) + variantes `_final_semana`.
 - **designacao_service.py** — `designacao_service`: listar_candidatos, salvar, listar, buscar, excluir.
 - **dashboard_service.py** — `dashboard_service`: contagens para os gráficos.
 
@@ -39,6 +39,8 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 **db_operations.py** — CRUD de publicadores, salvamento/busca de reuniões (meio e final de semana), atualização de histórico, listagens, contagens e métodos para seleção automática (por permissão, anciãos/servos, “quem fez menos”). Cria índices em `reunioes` e `reunioes_final_semana`.
 
 **__init__.py** — Exporta `db_ops` e funções (post, getAllPub, delete, salvar_reuniao, listar_reunioes, salvar_reuniao_final_semana, etc.).
+
+**partes.py** — Taxonomia das partes gravadas no `historico` do publicador, em três categorias disjuntas: `PARTES_MEIO_SEMANA` (programa do S140), `PARTES_FINAL_SEMANA` (Leitura Sentinela, Presidente Final Semana) e `PARTES_SALAO` (trabalho: Áudio, Vídeo, Microfone, Indicador). Fonte única da verdade — helpers `eh_designacao_trabalho()`, `eh_participacao_final_semana()`, `eh_participacao_meio_semana()`, `somente_meio_semana()`, `somente_final_semana()`. Cada categoria alimenta um dashboard próprio, sem soma entre elas.
 
 **init_db.py** — Inicialização do banco; índices principais estão em `DatabaseOperations.__init__` em db_operations.
 

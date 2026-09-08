@@ -14,7 +14,12 @@ class DashboardService:
         return db_ops.contar_participacoes_unicas_por_reuniao()
 
     def contar_designacoes_por_publicador(self):
+        """Trabalho de salão (áudio, vídeo, microfone, indicador)."""
         return db_ops.contar_designacoes_salao_por_publicador()
+
+    def contar_participacoes_final_semana(self):
+        """Programa da reunião de fim de semana (Leitura Sentinela, Presidente)."""
+        return db_ops.contar_participacoes_final_semana_por_publicador()
 
 
 dashboard_service = DashboardService()
