@@ -39,6 +39,23 @@ Referência principal: **layout.py** (janela do quadro de anúncio / criar reuni
 
 ## 2. Criar Reunião Final de Semana
 
+O card abre `escolher_modo_final_semana`: **Criar reunião** (Minutas, padrão), **Modelo do documento** ou **modo antigo** (fluxo 2.L abaixo).
+
+### 2.M Modo Minutas (bimestre)
+
+1. **Passo 1 — Período** (`views/minutas_view.py`): mês inicial + ano (sempre 2 meses), dirigente de A Sentinela, nome do arquivo, seleção automática de presidente/leitor.
+2. Em thread: `minuta_service.buscar_programacao` monta os sábados (`process/minutas/periodo.py`) e, para cada um, busca o título do estudo em `https://wol.jw.org/pt/wol/meetings/r5/lp-t/<ano ISO>/<semana ISO>`; aplica a seleção automática (mesmas funções do legado).
+3. **Passo 2 — Oradores vindo:** por mês, congregação de onde vêm; por sábado, título do estudo (editável), tema, orador, presidente, leitor.
+4. **Passo 3 — Oradores indo:** por mês, congregação de destino; por sábado, orador e tema (em branco = não houve).
+5. **Gerar:** `minuta_service.gerar_final_semana` renderiza cada minuta (`fds_oradores`, `fds_sentinela`) sobre o arquivo modelo, remove a reunião anterior do mesmo período (se houver — evita histórico duplicado), salva em `reunioes_final_semana` (`modo: "minuta"`, `meses`, `semanas` planas com `data`/`data_historico`), grava os .docx em `documentos_gerados` e em `documentosCriados/` e os abre.
+
+Durante os passos, a coluna da direita mostra a **pré-visualização ao vivo** (re-renderiza ~0,5 s depois de cada tecla; escolhe Oradores ou Sentinela; "Abrir no Word").
+6. **Histórico:** detalhes de reunião `modo: "minuta"` têm **Abrir documentos** (exporta do banco) e **Editar** reabre o assistente no passo 2.
+
+**Modelo do documento** (`editor_minutas`): a aparência vem do Word oficial importado ("Importar arquivo oficial…"); a tela só define os títulos do topo, qual tabela do modelo serve de exemplo para cada parte, o título de cada mês (variáveis `{mes}`, `{congregacao_recebendo}`…) e o que vai em cada coluna — com pré-visualização ao vivo. Cada salvamento incrementa `versao` e guarda a anterior em `minutas_versoes`.
+
+### 2.L Modo legado (templates .docx)
+
 1. O usuário clica no card **Criar Reunião Final de Semana** em **layout.py** e preenche URL, nome do arquivo e opções de seleção automática de Presidente e de Leitor da Sentinela.
 2. Ao confirmar, **layout** inicia o fluxo em uma thread de background: chama **final_semana.FinalSemana.buscar_titulos_meetings** (que usa **webscrapper.extrair_titulos_sentinela_meetings**) para obter as 9 semanas com títulos do estudo da Sentinela.
 3. Na mesma thread: se marcado, **FinalSemana.selecionar_presidente_automaticamente(semanas)** preenche presidente por semana usando **db_ops.listar_presidentes_final_semana_ordenados_por_menos_partecipacoes()** (anciãos e servos, ordenados por quem fez menos “Presidente Final Semana”). Se marcado, **FinalSemana.selecionar_leitor_automaticamente(semanas)** preenche leitor_sentinela com **db_ops.listar_ordenados_por_menos_partecipacoes("leitura_sentinela", "Leitura Sentinela")**.

@@ -32,3 +32,9 @@ def test_confirmou_aceita_rotulo_traduzido():
     assert confirmou("No") is False
     assert confirmou("Não") is False
     assert confirmou(None) is False
+
+
+def test_mixin_de_minutas_importa():
+    from views.minutas_view import MinutasMixin
+    for metodo in ("escolher_modo_final_semana", "criar_reuniao_final_semana_minutas", "editor_minutas"):
+        assert hasattr(MinutasMixin, metodo)

@@ -2339,6 +2339,19 @@ class DatabaseOperations:
             logger.error(f"Erro ao listar presidentes final semana ordenados: {str(e)}")
             return []
 
+    @staticmethod
+    def _data_historico_final_semana(semana, indice, ano, nome_mes):
+        """Rótulo gravado em `historico[].data` para uma semana do final de semana.
+
+        Modo Minutas grava `data_historico` já completo ("7 de novembro de 2026"),
+        o que mantém o ano certo quando o bimestre vira o ano. O modo legado
+        monta a partir do período raspado do site + ano da reunião.
+        """
+        if semana.get('data_historico'):
+            return semana['data_historico']
+        periodo = (semana.get('semana') or '').strip()
+        return f"{periodo} de {ano}" if periodo else f"Semana {indice + 1} de {nome_mes} de {ano}"
+
     def salvar_reuniao_final_semana(self, dados):
         """Salva ou atualiza uma reunião de final de semana em reunioes_final_semana."""
         try:
@@ -2364,8 +2377,7 @@ class DatabaseOperations:
             }
             nome_mes = meses_pt.get(mes, str(mes))
             for i, semana in enumerate(dados.get('semanas', [])):
-                periodo = (semana.get('semana') or '').strip()
-                data_part = f"{periodo} de {ano}" if periodo else f"Semana {i + 1} de {nome_mes} de {ano}"
+                data_part = self._data_historico_final_semana(semana, i, ano, nome_mes)
                 presidente = semana.get('presidente', '')
                 if presidente:
                     self._atualizar_historico_individual(presidente, "Presidente Final Semana", data_part)
@@ -2450,6 +2462,9 @@ class DatabaseOperations:
             nome_mes = meses_pt.get(mes, str(mes))
             datas_remover = []
             for i, s in enumerate(reuniao.get('semanas', [])):
+                if s.get('data_historico'):
+                    datas_remover.append(s['data_historico'])
+                    continue
                 periodo = (s.get('semana') or '').strip()
                 if periodo:
                     datas_remover.append(f"{periodo} de {ano}")
@@ -2472,6 +2487,8 @@ class DatabaseOperations:
             result = collection_fs.delete_one({"ano": ano, "mes": mes})
             if result.deleted_count == 0:
                 return {"success": False, "message": "Falha ao excluir reunião"}
+            # Documentos Word gerados no modo Minutas pertencem à reunião.
+            self.db['documentos_gerados'].delete_many({"ano": ano, "mes": mes})
             return {"success": True, "message": "Reunião excluída e histórico dos publicadores atualizado."}
         except Exception as e:
             logger.error(f"Erro ao excluir reunião final de semana: {str(e)}")
@@ -2693,6 +2710,171 @@ class DatabaseOperations:
         except Exception as e:
             logger.error(f"Erro ao contar designações salão por publicador: {str(e)}")
             return {}
+
+    # ------------------------------------------------------------------
+    # Configurações gerais (chave -> valor)
+    # ------------------------------------------------------------------
+    def obter_configuracao(self, chave, padrao=None):
+        """Valor de uma configuração geral (ex.: 'congregacao')."""
+        try:
+            if self.db_type != 'mongodb':
+                return padrao
+            doc = self.db['configuracoes'].find_one({"chave": chave})
+            return doc.get("valor", padrao) if doc else padrao
+        except Exception as e:
+            logger.error(f"Erro ao obter configuração '{chave}': {str(e)}")
+            return padrao
+
+    def salvar_configuracao(self, chave, valor):
+        try:
+            if self.db_type != 'mongodb':
+                return {"success": False, "message": "Configurações suportadas apenas em MongoDB"}
+            self.db['configuracoes'].update_one(
+                {"chave": chave},
+                {"$set": {"chave": chave, "valor": valor,
+                          "atualizado_em": datetime.datetime.now().isoformat()}},
+                upsert=True,
+            )
+            return {"success": True, "message": "Configuração salva"}
+        except Exception as e:
+            logger.error(f"Erro ao salvar configuração '{chave}': {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    # ------------------------------------------------------------------
+    # Minutas (SDD 18): como preencher + arquivo modelo (.docx oficial)
+    # ------------------------------------------------------------------
+    def buscar_minuta(self, chave):
+        """Minuta pela chave (ex.: 'fds_oradores') ou None."""
+        try:
+            if self.db_type != 'mongodb':
+                return None
+            doc = self.db['minutas'].find_one({"chave": chave})
+            if doc:
+                doc.pop('_id', None)
+            return doc
+        except Exception as e:
+            logger.error(f"Erro ao buscar minuta '{chave}': {str(e)}")
+            return None
+
+    def listar_minutas(self):
+        try:
+            if self.db_type != 'mongodb':
+                return []
+            return list(self.db['minutas'].find({}, {'_id': 0}).sort("chave", 1))
+        except Exception as e:
+            logger.error(f"Erro ao listar minutas: {str(e)}")
+            return []
+
+    def salvar_minuta(self, minuta):
+        """Grava a minuta incrementando `versao`. A versão anterior vai para
+        `minutas_versoes` (permite voltar atrás se uma edição estragar o layout)."""
+        try:
+            if self.db_type != 'mongodb':
+                return {"success": False, "message": "Minutas suportadas apenas em MongoDB"}
+            chave = minuta.get('chave')
+            if not chave:
+                return {"success": False, "message": "Minuta sem chave"}
+            collection = self.db['minutas']
+            atual = collection.find_one({"chave": chave})
+            versao = 1
+            if atual:
+                atual.pop('_id', None)
+                self.db['minutas_versoes'].insert_one(dict(atual))
+                versao = int(atual.get('versao', 0)) + 1
+            novo = {**minuta, "versao": versao,
+                    "atualizado_em": datetime.datetime.now().isoformat()}
+            novo.pop('_id', None)
+            collection.replace_one({"chave": chave}, novo, upsert=True)
+            return {"success": True, "message": "Minuta salva", "versao": versao}
+        except Exception as e:
+            logger.error(f"Erro ao salvar minuta: {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def buscar_minuta_modelo(self, chave):
+        """Bytes do arquivo modelo (.docx oficial) da minuta, ou None."""
+        try:
+            if self.db_type != 'mongodb':
+                return None
+            doc = self.db['minutas_modelo'].find_one({"chave": chave})
+            return bytes(doc['arquivo']) if doc and doc.get('arquivo') is not None else None
+        except Exception as e:
+            logger.error(f"Erro ao buscar modelo da minuta '{chave}': {str(e)}")
+            return None
+
+    def salvar_minuta_modelo(self, chave, arquivo_bytes, nome=""):
+        try:
+            if self.db_type != 'mongodb':
+                return {"success": False, "message": "Minutas suportadas apenas em MongoDB"}
+            from bson.binary import Binary
+            self.db['minutas_modelo'].update_one(
+                {"chave": chave},
+                {"$set": {"chave": chave, "nome": nome, "arquivo": Binary(arquivo_bytes),
+                          "tamanho": len(arquivo_bytes),
+                          "atualizado_em": datetime.datetime.now().isoformat()}},
+                upsert=True,
+            )
+            return {"success": True, "message": "Modelo salvo"}
+        except Exception as e:
+            logger.error(f"Erro ao salvar modelo da minuta '{chave}': {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def info_minuta_modelo(self, chave):
+        """Metadados (sem bytes) do arquivo modelo: {nome, tamanho, atualizado_em} ou None."""
+        try:
+            if self.db_type != 'mongodb':
+                return None
+            return self.db['minutas_modelo'].find_one({"chave": chave}, {"_id": 0, "arquivo": 0})
+        except Exception as e:
+            logger.error(f"Erro ao ler dados do modelo da minuta '{chave}': {str(e)}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Documentos gerados (o .docx renderizado fica no banco, ligado à reunião)
+    # ------------------------------------------------------------------
+    def salvar_documento_gerado(self, ano, mes, tipo, nome_arquivo, arquivo_bytes, minuta_versao=None):
+        """Grava (substitui) o documento `tipo` da reunião de final de semana (ano, mes)."""
+        try:
+            if self.db_type != 'mongodb':
+                return {"success": False, "message": "Documentos suportados apenas em MongoDB"}
+            from bson.binary import Binary
+            self.db['documentos_gerados'].update_one(
+                {"ano": ano, "mes": mes, "tipo": tipo},
+                {"$set": {"ano": ano, "mes": mes, "tipo": tipo, "nome_arquivo": nome_arquivo,
+                          "arquivo": Binary(arquivo_bytes), "tamanho": len(arquivo_bytes),
+                          "minuta_versao": minuta_versao,
+                          "criado_em": datetime.datetime.now().isoformat()}},
+                upsert=True,
+            )
+            return {"success": True, "message": "Documento salvo"}
+        except Exception as e:
+            logger.error(f"Erro ao salvar documento gerado: {str(e)}")
+            return {"success": False, "message": str(e)}
+
+    def listar_documentos_gerados(self, ano, mes):
+        """Metadados (sem os bytes) dos documentos da reunião (ano, mes)."""
+        try:
+            if self.db_type != 'mongodb':
+                return []
+            return list(self.db['documentos_gerados'].find(
+                {"ano": ano, "mes": mes}, {"_id": 0, "arquivo": 0}).sort("tipo", 1))
+        except Exception as e:
+            logger.error(f"Erro ao listar documentos gerados: {str(e)}")
+            return []
+
+    def buscar_documento_gerado(self, ano, mes, tipo):
+        """{nome_arquivo, arquivo(bytes), ...} ou None."""
+        try:
+            if self.db_type != 'mongodb':
+                return None
+            doc = self.db['documentos_gerados'].find_one({"ano": ano, "mes": mes, "tipo": tipo})
+            if not doc:
+                return None
+            doc.pop('_id', None)
+            doc['arquivo'] = bytes(doc['arquivo'])
+            return doc
+        except Exception as e:
+            logger.error(f"Erro ao buscar documento gerado: {str(e)}")
+            return None
 
 
 # Criar uma instância global das operações

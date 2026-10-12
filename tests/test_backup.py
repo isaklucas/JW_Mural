@@ -105,3 +105,20 @@ def test_backup_ignorado_fora_do_mongodb(raiz, monkeypatch):
 
     assert backup_mod.backup_database() is True
     assert not (raiz / "backups").exists()
+
+
+def test_backup_e_restore_preservam_bytes_dos_documentos(raiz, monkeypatch):
+    """Minutas guardam .docx (bytes) no banco; `default=str` gravaria "b'...'" e o
+    restore devolveria texto, corrompendo o documento."""
+    from bson.binary import Binary
+
+    conteudo = b"PK\x03\x04 docx binario \xff\x00"
+    db = _instalar_db(monkeypatch, docs={
+        "documentos_gerados": [{"tipo": "fds_oradores", "arquivo": Binary(conteudo)}],
+    })
+
+    assert backup_mod.backup_database() is True
+    db["documentos_gerados"].delete_many({})
+
+    backup_mod.restore_database(date.today().isoformat(), ["documentos_gerados"])
+    assert bytes(db["documentos_gerados"].find_one()["arquivo"]) == conteudo

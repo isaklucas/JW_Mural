@@ -919,7 +919,9 @@ class HistoricoMixin:
                             (f"{rotulo} - Tema Discurso", semana.get('tema_discurso', '')),
                             (f"{rotulo} - Orador", semana.get('orador', '')),
                             (f"{rotulo} - Presidente", semana.get('presidente', '')),
-                            (f"{rotulo} - Leitor Sentinela", semana.get('leitor_sentinela', ''))
+                            (f"{rotulo} - Leitor Sentinela", semana.get('leitor_sentinela', '')),
+                            (f"{rotulo} - Orador Indo", semana.get('orador_saindo', '')),
+                            (f"{rotulo} - Tema Indo", semana.get('tema_saindo', '')),
                         ]
                         for j, (parte, participante) in enumerate(detalhes):
                             if participante:
@@ -946,6 +948,11 @@ class HistoricoMixin:
                     Messagebox.show_error(resultado.get("message", "Erro ao excluir."), title="Erro")
 
             def ao_editar():
+                if reuniao and reuniao.get("modo") == "minuta":
+                    # Reunião criada por Minutas: reabre o assistente já preenchido.
+                    detalhes_window.destroy()
+                    self.criar_reuniao_final_semana_minutas(reuniao=reuniao, ao_concluir=carregar)
+                    return
                 import copy
                 semanas_copy = copy.deepcopy(reuniao.get("semanas", []))
                 if not final_semana.FinalSemana.solicitar_dados_usuario(semanas_copy, parent=detalhes_window):
@@ -973,6 +980,21 @@ class HistoricoMixin:
                 detalhes_window.destroy()
                 carregar()
 
+            def ao_abrir_documentos():
+                docs = minuta_service.listar_documentos(ano, mes)
+                if not docs:
+                    Messagebox.show_info("Nenhum documento guardado no banco para esta reunião.", title="Documentos")
+                    return
+                try:
+                    for d in docs:
+                        minuta_service.abrir(minuta_service.exportar_documento(ano, mes, d["tipo"]))
+                except Exception as ex:
+                    logger.exception("Erro ao abrir documentos guardados")
+                    Messagebox.show_error(f"Erro ao abrir documentos: {ex}", title="Erro")
+
+            if reuniao and reuniao.get("modo") == "minuta":
+                ttk.Button(btn_frame, text="Abrir documentos", command=ao_abrir_documentos,
+                           bootstyle="success", width=16).pack(side=LEFT, padx=(0, 10))
             ttk.Button(btn_frame, text="Editar", command=ao_editar, bootstyle="info", width=12).pack(side=LEFT, padx=(0, 10))
             ttk.Button(btn_frame, text="Excluir", command=ao_excluir, bootstyle="danger", width=12).pack(side=LEFT, padx=(0, 10))
             ttk.Button(btn_frame, text="Voltar", command=detalhes_window.destroy, bootstyle="secondary", width=12).pack(side=LEFT)

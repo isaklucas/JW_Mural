@@ -17,7 +17,9 @@ Interface — uma tela por módulo, cada uma um *mixin* de `ModernApp`.
 - **reunioes_view.py** — `ReunioesMixin`: `criar_quadro_de_anuncio` (meio de semana) e `criar_reuniao_final_semana`.
 - **designacoes_view.py** — `DesignacoesMixin`: `designacoes_salao` (áudio, vídeo, microfone, indicadores).
 - **dashboards_view.py** — `DashboardsMixin`: `dashboards`.
-- **config_view.py** — `ConfigMixin`: `abrir_configuracoes`.
+- **config_view.py** — `ConfigMixin`: `abrir_configuracoes` (inclui o nome da **Congregação**, usado nos títulos das Minutas).
+- **minutas_view.py** — `MinutasMixin` (Modo Minutas, SDD 18): `escolher_modo_final_semana` (o card "Criar Reunião Final de Semana" abre: criar reunião / Modelo do documento / modo antigo), `criar_reuniao_final_semana_minutas` (assistente de 3 passos — período → oradores vindo → oradores indo — com **pré-visualização ao vivo** à direita; também edita reunião salva) e `editor_minutas` ("Modelo do documento": importar o Word oficial, títulos do topo, qual tabela do modelo usar e o que vai em cada coluna, com pré-visualização ao vivo).
+- **preview_docx.py** — `PreviewDocx`: Canvas que pinta o layout de `process.minutas.preview` (página em escala, imagens, cores do estilo de tabela). Aproximação; o .docx final sai idêntico ao modelo.
 
 ## services/
 
@@ -27,6 +29,7 @@ Camada de serviço — **única parte da UI que importa `database`/`db_ops`**. A
 - **reuniao_service.py** — `reuniao_service`: listar/buscar/salvar reuniões, remover_participacao/reatribuir_participacao (edição de uma parte já salva) + variantes `_final_semana`.
 - **designacao_service.py** — `designacao_service`: listar_candidatos, salvar, listar, buscar, excluir.
 - **dashboard_service.py** — `dashboard_service`: contagens para os gráficos.
+- **minuta_service.py** — `minuta_service`: semeia/valida minutas e arquivos modelo, busca a programação do bimestre no wol.jw.org, renderiza (inclusive `pacote`/`renderizar_pacote` para a pré-visualização sem ir ao banco a cada tecla), grava o .docx em `documentos_gerados` + `documentosCriados/` e a reunião em `reunioes_final_semana`; reabre documentos guardados; nome da congregação (`configuracoes`). Atenção: `services.minuta_service` (atributo do pacote) é a **instância**; para o módulo use `importlib.import_module("services.minuta_service")`.
 
 ## tests/
 
@@ -48,7 +51,9 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 
 **s140.py** — Reunião de meio de semana: webscrapper para obter HTML, extração de partes, preenchimento manual ou automático de publicadores, geração do Word (Template_PT.docx), salvamento em documentosCriados/ e atualização de reunião e histórico via db_ops.
 
-**final_semana.py** — Reunião final de semana: extração de títulos da Sentinela (webscrapper), seleção automática de presidente (anciãos/servos) e leitor (leitura_sentinela), modais para dirigente e dados (tema, orador, presidente, leitor) com autocomplete de temas a partir de assets/temas_discursos.json, geração de dois Word (Sentinela e Oradores) a partir dos templates em Templates/, salvamento em documentosCriados/ e em reunioes_final_semana.
+**minutas/** — Modo Minutas (SDD 18), puro (não importa `database`): `periodo.py` (sábados do bimestre, URL da semana ISO no wol.jw.org, rótulo de histórico "7 de novembro de 2026"), `padrao.py` (minutas padrão, `CAMPOS`, `VARIAVEIS_TITULO`, `validar_minuta`), `render.py` (`renderizar(minuta, modelo_bytes, dados) -> bytes`: mantém o cabeçalho do modelo — imagem, título, linhas — e **clona as tabelas do modelo** por mês, repetindo a linha de exemplo; a troca de texto preserva a formatação por trecho via `difflib`; `descrever_modelo`, `validar_modelo`), `preview.py` (`montar_layout(docx_bytes)`: lista de desenho para a pré-visualização, resolvendo cores do tema e do estilo de tabela).
+
+**final_semana.py** — Reunião final de semana (modo **legado**, ainda disponível): extração de títulos da Sentinela (webscrapper), seleção automática de presidente (anciãos/servos) e leitor (leitura_sentinela), modais para dirigente e dados (tema, orador, presidente, leitor) com autocomplete de temas a partir de assets/temas_discursos.json, geração de dois Word (Sentinela e Oradores) a partir dos templates em Templates/, salvamento em documentosCriados/ e em reunioes_final_semana.
 
 **webscrapper.py** — Requisições ao wol.jw.org e parsing (BeautifulSoup); extração de títulos do estudo da Sentinela na página de meetings. Usado por s140 e final_semana. Rede robusta: sessão HTTP com `timeout`, `User-Agent` e retry/backoff; falha de rede vira retorno `None` (sem travar a UI) e há aviso em log quando a estrutura do site muda (0 cards).
 
@@ -70,6 +75,8 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 
 Ícone da aplicação (icon.ico) e **temas_discursos.json** (array de strings "N. Título do tema") para autocomplete do campo Tema Discurso no modal de final de semana. Carregado por `final_semana._carregar_temas_discursos()`.
 
+**assets/minutas/** — arquivos modelo padrão: `modelo_fds_oradores.docx` e `modelo_fds_sentinela.docx` = os documentos oficiais de 2026 com os nomes das linhas de exemplo trocados por fictícios (formatação intacta). Semeados em `minutas_modelo` no primeiro uso.
+
 ## Templates/
 
-**Template_PT.docx** — Reunião meio de semana (placeholders p01, p02, …). **template_final_semana_sentinela.docx** e **template_final_semana_oradores.docx** — Final de semana (w_dirigente, w1..w9). Arquivos só leitura; saída em documentosCriados/.
+**Template_PT.docx** — Reunião meio de semana (placeholders p01, p02, …). **template_final_semana_sentinela.docx** e **template_final_semana_oradores.docx** — Final de semana (w_dirigente, w1..w9). Arquivos só leitura; saída em documentosCriados/. Os de final de semana servem só ao **modo legado** — o Modo Minutas não usa `Templates/`.
