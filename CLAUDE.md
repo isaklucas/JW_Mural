@@ -65,6 +65,7 @@ Desktop app (Windows-primary) for managing JW congregation meeting schedules: sc
 - `views/designacoes_view.py` — `DesignacoesMixin` (`designacoes_salao`).
 - `views/dashboards_view.py` — `DashboardsMixin` (`dashboards`).
 - `views/config_view.py` — `ConfigMixin` (`abrir_configuracoes`).
+- `views/minutas_view.py` — `MinutasMixin` (`escolher_modo_final_semana`, `criar_reuniao_final_semana_minutas`, `editor_minutas`) — Modo Minutas: weekend docs rendered from the official Word file stored in MongoDB (header/image kept, tables cloned per month, text swapped preserving formatting) with a live preview pane (`views/preview_docx.py`); see `src/process/minutas/`, `services/minuta_service.py`.
 
 The screen mixins never touch `database`/`db_ops` directly — they go through the **service layer** in `src/services/` (`publicador_service`, `reuniao_service`, `designacao_service`, `dashboard_service`), which is the only UI-side code that imports `database`. Add a new DB operation there, not in a view.
 

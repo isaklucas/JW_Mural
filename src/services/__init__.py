@@ -8,8 +8,10 @@ from services.publicador_service import publicador_service, PublicadorService
 from services.reuniao_service import reuniao_service, ReuniaoService
 from services.designacao_service import designacao_service, DesignacaoService
 from services.dashboard_service import dashboard_service, DashboardService
+from services.minuta_service import minuta_service, MinutaService
 
 __all__ = [
+    "minuta_service", "MinutaService",
     "publicador_service", "PublicadorService",
     "reuniao_service", "ReuniaoService",
     "designacao_service", "DesignacaoService",

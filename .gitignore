@@ -43,3 +43,6 @@ Desktop.ini
 .DS_Store
 .vscode/
 .idea/
+
+# === Pacote para instalar em PC novo (instalador, MongoDB, backup com dados pessoais) ===
+enviar_app/

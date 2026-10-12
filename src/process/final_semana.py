@@ -162,7 +162,12 @@ class FinalSemana:
     def _carregar_temas_discursos():
         """Carrega lista de temas de discurso de assets/temas_discursos.json. Retorna [] em erro."""
         try:
-            path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'assets', 'temas_discursos.json'))
+            # Build: process/../assets; rodando do fonte: src/process/../../assets.
+            aqui = os.path.dirname(__file__)
+            candidatos = [os.path.join(aqui, '..', 'assets', 'temas_discursos.json'),
+                          os.path.join(aqui, '..', '..', 'assets', 'temas_discursos.json')]
+            path = next((os.path.abspath(p) for p in candidatos if os.path.exists(p)),
+                        os.path.abspath(candidatos[0]))
             with open(path, encoding='utf-8') as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
