@@ -8,6 +8,25 @@ from datetime import date, datetime, timedelta
 logger = logging.getLogger(__name__)
 
 
+def _serializar(valor):
+    """`default` do json.dump: bytes (docx guardado no banco — minutas e documentos
+    gerados) viram Extended JSON `{"$binary": ...}`, que o restore reconverte.
+    O resto (ObjectId, datetime) continua como texto, igual antes."""
+    if isinstance(valor, (bytes, bytearray)):
+        from bson import json_util
+        from bson.binary import Binary
+        return json_util.default(Binary(bytes(valor)))
+    return str(valor)
+
+
+def _desserializar(obj):
+    """`object_hook` do json.load: reconverte `{"$binary": ...}` em bytes."""
+    if "$binary" in obj:
+        from bson import json_util
+        return json_util.object_hook(obj)
+    return obj
+
+
 def _project_root() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
@@ -46,7 +65,7 @@ def backup_database(sufixo: str = "", forcar: bool = False) -> bool:
             docs = list(db[name].find({}))
             filepath = backup_dir / f"{name}.json"
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(docs, f, ensure_ascii=False, indent=2, default=str)
+                json.dump(docs, f, ensure_ascii=False, indent=2, default=_serializar)
             logger.info(f"Backup {name}: {len(docs)} documentos")
 
         logger.info(f"Backup concluído: {backup_dir} ({len(collections)} collections)")
@@ -108,7 +127,7 @@ def restore_database(backup_date: str, collections: list) -> dict:
                 results[name] = {"status": "arquivo não encontrado", "count": 0}
                 continue
             with open(filepath, encoding='utf-8') as f:
-                docs = json.load(f)
+                docs = json.load(f, object_hook=_desserializar)
             for d in docs:
                 d.pop('_id', None)
             db[name].drop()

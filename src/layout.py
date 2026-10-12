@@ -51,6 +51,7 @@ try:
     from views.designacoes_view import DesignacoesMixin
     from views.dashboards_view import DashboardsMixin
     from views.config_view import ConfigMixin
+    from views.minutas_view import MinutasMixin
     from util.startup_manager import initialize_application
     import datetime
     import threading
@@ -79,7 +80,7 @@ except Exception as _import_err:
 
 logger = logging.getLogger(__name__)
 
-class ModernApp(PublicadoresMixin, HistoricoMixin, ReunioesMixin, DesignacoesMixin, DashboardsMixin, ConfigMixin):
+class ModernApp(PublicadoresMixin, HistoricoMixin, ReunioesMixin, DesignacoesMixin, DashboardsMixin, ConfigMixin, MinutasMixin):
     def __init__(self, root):
         self.root = root
         # Configuração da janela principal com tema moderno
@@ -126,7 +127,7 @@ class ModernApp(PublicadoresMixin, HistoricoMixin, ReunioesMixin, DesignacoesMix
             "Criar Reunião Final de Semana",
             "Gere documentos para reuniões de final de semana",
             "primary",
-            self.criar_reuniao_final_semana,
+            self.escolher_modo_final_semana,
             0, 1
         )
         

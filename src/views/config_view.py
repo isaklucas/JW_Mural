@@ -22,6 +22,21 @@ class ConfigMixin:
 
         ttk.Label(frame, text="⚙ Configurações", font=("Helvetica", 16, "bold"), bootstyle="primary").pack(anchor=W, pady=(0, 15))
 
+        # --- Congregação (usada nos títulos das Minutas: {congregacao}) ---
+        cong_frame = ttk.LabelFrame(frame, text="Congregação", padding=15)
+        cong_frame.pack(fill=X, pady=(0, 10))
+        cong_var = tk.StringVar(value=minuta_service.obter_congregacao())
+        ttk.Entry(cong_frame, textvariable=cong_var, width=30).pack(side=LEFT, padx=(0, 8))
+
+        def salvar_congregacao():
+            r = minuta_service.salvar_congregacao(cong_var.get())
+            if r.get("success"):
+                Messagebox.ok("Congregação salva.", "Configurações", parent=dialog)
+            else:
+                Messagebox.show_error(r.get("message", "Erro"), "Configurações", parent=dialog)
+
+        ttk.Button(cong_frame, text="Salvar", bootstyle="info-outline", command=salvar_congregacao).pack(side=LEFT)
+
         # --- Restaurar Banco ---
         restore_frame = ttk.LabelFrame(frame, text="Restaurar Banco", padding=15)
         restore_frame.pack(fill=X, pady=(0, 10))
@@ -95,7 +110,7 @@ class ConfigMixin:
 
         # Centralizar dialog
         dialog.update_idletasks()
-        w, h = 420, 480
+        w, h = 420, 570
         x = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
         y = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
         dialog.geometry(f"{w}x{h}+{x}+{y}")

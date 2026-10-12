@@ -32,6 +32,7 @@ from services import (
     reuniao_service,
     designacao_service,
     dashboard_service,
+    minuta_service,
 )
 from views.components import abrir_modal_editar_participacao, confirmou
 import util.janelas as janelas

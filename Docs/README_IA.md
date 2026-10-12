@@ -311,7 +311,7 @@ erDiagram
 
 ### `views/` - Telas (uma por mixin)
 
-Cada método de tela vive num mixin próprio; `layout.py` os combina em `ModernApp`. Métodos: `criar_quadro_de_anuncio`, `criar_reuniao_final_semana` (`reunioes_view`); `publicadores`, `historico_publicadores` (`publicadores_view`); `historico`, `historico_final_semana` (`historico_view`); `designacoes_salao` (`designacoes_view`); `dashboards` (`dashboards_view`); `abrir_configuracoes` (`config_view`). `components.py` = card clicável; `_shared.py` = imports comuns (inclui os serviços).
+Cada método de tela vive num mixin próprio; `layout.py` os combina em `ModernApp`. Métodos: `criar_quadro_de_anuncio`, `criar_reuniao_final_semana` (`reunioes_view`); `publicadores`, `historico_publicadores` (`publicadores_view`); `historico`, `historico_final_semana` (`historico_view`); `designacoes_salao` (`designacoes_view`); `dashboards` (`dashboards_view`); `abrir_configuracoes` (`config_view`); `escolher_modo_final_semana`, `criar_reuniao_final_semana_minutas`, `editor_minutas` (`minutas_view`, Modo Minutas — SDD 18). `components.py` = card clicável; `_shared.py` = imports comuns (inclui os serviços).
 
 ### `services/` - Camada de Dados da UI
 

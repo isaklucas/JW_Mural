@@ -64,6 +64,17 @@ Reuniões de **final de semana**. Uma entrada por ano/mês; chave lógica: `ano`
 
 ---
 
+### Modo Minutas (SDD 18)
+
+- **`reunioes_final_semana`** ganha, quando `modo: "minuta"`: `qtd_meses`, `periodo` ("Novembro–Dezembro 2026"), `congregacao`, `meses: [{ano, mes, congregacao_recebendo, congregacao_saindo}]`. A chave continua `(ano, mes)` = **primeiro** mês do bimestre. Cada item de `semanas` tem `data` (ISO), `data_historico` (rótulo gravado em `historico[].data`, com o ano certo mesmo virando o ano), `orador_saindo`, `tema_saindo` além dos campos legados.
+- **`minutas`** — `{chave, formato: 2, nome, sufixo_arquivo, cabecalho[], tabelas[{nome, modelo, titulo, campos[], omitir_se_vazio, linha_dados}], versao, atualizado_em}`: diz COMO preencher o modelo (qual tabela do modelo serve de exemplo, o que vai em cada coluna). Minuta com `formato` ≠ 2 é trocada pela padrão.
+- **`minutas_versoes`** — cópia de cada versão anterior de uma minuta.
+- **`minutas_modelo`** — `{chave, nome, arquivo: Binary, tamanho, atualizado_em}`: o **arquivo Word oficial** usado como modelo (imagem, cores, fontes). Importado pelo usuário em "Modelo do documento"; padrão em `assets/minutas/modelo_fds_*.docx`.
+- **`documentos_gerados`** — `{ano, mes, tipo, nome_arquivo, arquivo: Binary, minuta_versao, criado_em}`; único por `(ano, mes, tipo)`; apagado junto com a reunião.
+- **`configuracoes`** — `{chave, valor}` (ex.: `congregacao`).
+
+Os `.docx` ficam como `Binary` (dezenas de KB, longe do limite de 16 MB do BSON). O backup JSON (`util/backup.py`) grava bytes como `{"$binary": ...}` e o restore reconverte.
+
 ## DynamoDB
 
 - **Tabela:** uma única tabela (nome em `DYNAMODB_TABLE`, normalmente `publicadores`) armazena os **publicadores** com a mesma estrutura lógica (nome, batizado, Anciao, Servo_Ministerial, sexo, permissoes, data_inclusao, ultima_parte, historico).
