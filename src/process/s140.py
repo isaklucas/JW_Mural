@@ -305,6 +305,12 @@ class s140:
                 progress_cb(f"Buscando reunião semana {sem_num}...", pct)
             url = base_url + "/" + str(i)
             link = webscrapper.webscrapper.executarBuscaURL(url)
+            if not link:
+                raise ValueError(
+                    f"Não foi possível obter a programação da semana {i} em {url}.\n"
+                    "Verifique a URL, a conexão com a internet ou se a semana já foi "
+                    "publicada em wol.jw.org."
+                )
             linkSemanas.append(link)
 
         print("Links das Semanas Encontradas: ", linkSemanas)
@@ -315,6 +321,11 @@ class s140:
             urlCompleta = baseJWURL + link
             print("Iniciando Busca de Soup Semana : " + urlCompleta )
             soupSemana = webscrapper.webscrapper.executar(urlCompleta)
+            if soupSemana is None:
+                raise ValueError(
+                    f"Falha ao carregar o conteúdo da semana {idx + 1} ({urlCompleta}). "
+                    "Verifique a conexão com a internet e tente novamente."
+                )
             listaSoupSemanas.append(soupSemana)
 
         return listaSoupSemanas

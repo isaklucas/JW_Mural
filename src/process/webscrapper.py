@@ -17,11 +17,10 @@ logger = logging.getLogger(__name__)
 
 # (connect, read) em segundos — evita thread travada se wol.jw.org não responder
 _TIMEOUT = (8, 20)
+# NÃO imitar User-Agent de navegador: o WAF do wol.jw.org responde a UA "Chrome"
+# com um challenge JavaScript (HTTP 202, corpo vazio, x-amzn-waf-action: challenge)
+# que o requests não resolve. Com o UA padrão do requests a página vem normal.
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    ),
     "Accept-Language": "pt-BR,pt;q=0.9",
 }
 
@@ -49,6 +48,13 @@ def _get(url):
     try:
         resp = _session.get(url, timeout=_TIMEOUT)
         resp.raise_for_status()
+        # WAF (CloudFront) devolve 202 com corpo vazio e challenge em vez da página
+        if resp.headers.get("x-amzn-waf-action") or resp.status_code == 202 or not resp.text:
+            logger.warning(
+                "wol.jw.org bloqueou a requisição em %s (status %s, waf=%s)",
+                url, resp.status_code, resp.headers.get("x-amzn-waf-action"),
+            )
+            return None
         return resp
     except requests.exceptions.Timeout:
         logger.warning("Timeout ao acessar %s", url)

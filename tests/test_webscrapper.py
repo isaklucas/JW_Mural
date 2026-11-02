@@ -83,3 +83,51 @@ def test_get_falha_de_rede_retorna_none(monkeypatch):
 
     monkeypatch.setattr(ws, "_get", lambda url: None)
     assert ws.webscrapper.executar("http://qualquer") is None
+
+
+class _FakeResp:
+    def __init__(self, status=200, text="<html></html>", headers=None):
+        self.status_code = status
+        self.text = text
+        self.headers = headers or {}
+
+    def raise_for_status(self):
+        pass
+
+
+def test_get_challenge_do_waf_retorna_none(monkeypatch, caplog):
+    # wol.jw.org (CloudFront WAF) devolve 202 + corpo vazio + x-amzn-waf-action
+    # quando acha que é bot -> _get deve tratar como falha, não como página válida
+    import process.webscrapper as ws
+
+    resp = _FakeResp(status=202, text="", headers={"x-amzn-waf-action": "challenge"})
+    monkeypatch.setattr(ws._session, "get", lambda url, timeout: resp)
+
+    with caplog.at_level(logging.WARNING, logger="process.webscrapper"):
+        assert ws._get("http://qualquer") is None
+
+    assert any("bloqueou" in r.message for r in caplog.records)
+
+
+def test_get_resposta_ok_retorna_response(monkeypatch):
+    import process.webscrapper as ws
+
+    resp = _FakeResp(status=200, text="<html>ok</html>")
+    monkeypatch.setattr(ws._session, "get", lambda url, timeout: resp)
+
+    assert ws._get("http://qualquer") is resp
+
+
+def test_busca_url_sem_card_retorna_none(monkeypatch):
+    # página carregou mas sem o link cardLine1Prominent -> None (caller decide o erro)
+    import process.webscrapper as ws
+
+    monkeypatch.setattr(ws, "_get", lambda url: _FakeResp(text="<html><body></body></html>"))
+    assert ws.webscrapper.executarBuscaURL("http://qualquer") is None
+
+
+def test_headers_nao_imitam_navegador():
+    # UA "Chrome" dispara o challenge do WAF do wol.jw.org (ver comentário em _HEADERS)
+    import process.webscrapper as ws
+
+    assert "User-Agent" not in ws._HEADERS
