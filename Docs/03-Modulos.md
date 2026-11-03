@@ -55,6 +55,8 @@ Suíte pytest offline (não precisa de MongoDB). `conftest.py` injeta um módulo
 
 **final_semana.py** — Reunião final de semana (modo **legado**, ainda disponível): extração de títulos da Sentinela (webscrapper), seleção automática de presidente (anciãos/servos) e leitor (leitura_sentinela), modais para dirigente e dados (tema, orador, presidente, leitor) com autocomplete de temas a partir de assets/temas_discursos.json, geração de dois Word (Sentinela e Oradores) a partir dos templates em Templates/, salvamento em documentosCriados/ e em reunioes_final_semana.
 
+**designacoes_salao.py** — Designações do salão (áudio, vídeo, microfone, indicadores). `gerar_designacoes` faz escolha gulosa por pontuação: favorece quem fez menos na função e no total do salão, penaliza quem serviu nas últimas 1–3 reuniões e duplas repetidas (inclusive áudio+vídeo). Usa os últimos `MESES_JANELA` meses salvos em `designacoes_salao` como histórico (peso reduzido, `PESO_HISTORICO`); meses sendo regerados são ignorados. Ruído aleatório mistura empates — gerar de novo dá outra combinação. Pesos no topo do arquivo.
+
 **webscrapper.py** — Requisições ao wol.jw.org e parsing (BeautifulSoup); extração de títulos do estudo da Sentinela na página de meetings. Usado por s140 e final_semana. Rede robusta: sessão HTTP com `timeout`, `User-Agent` e retry/backoff; falha de rede vira retorno `None` (sem travar a UI) e há aviso em log quando a estrutura do site muda (0 cards).
 
 ## util/
